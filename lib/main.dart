@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'screens/main_screen.dart';
-import 'screens/login_screen.dart';
 import 'services/auth_service.dart';
 
 void main() async {
@@ -27,28 +26,7 @@ class VortaxLabsApp extends StatelessWidget {
         useMaterial3: true,
         scaffoldBackgroundColor: Colors.white,
       ),
-      home: AuthService.isLoggedIn
-          ? const MainScreen()
-          : const _LoginWrapper(),
-    );
-  }
-}
-
-/// Wrapper to provide onLoginSuccess callback to LoginScreen
-class _LoginWrapper extends StatelessWidget {
-  const _LoginWrapper();
-
-  @override
-  Widget build(BuildContext context) {
-    return LoginScreen(
-      onLoginSuccess: () {
-        // Replace entire stack with fresh MainScreen after login
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (_) => const MainScreen()),
-          (route) => false,
-        );
-      },
+      home: const MainScreen(),
     );
   }
 }

@@ -5,6 +5,7 @@ import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/status.dart' as status;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'auth_service.dart';
 
 /// ============================================================
 /// Vortex Labs Global WebSocket Service
@@ -35,6 +36,7 @@ class WebSocketService {
   static const int _wsPort = 8085;
   static const Duration _reconnectDelay = Duration(seconds: 3);
   static const int _maxReconnectAttempts = 5;
+  static const Duration _connectTimeout = Duration(seconds: 5);
 
   // ---- Connection State ----
   static IOWebSocketChannel? _channel;
@@ -44,6 +46,7 @@ class WebSocketService {
   static Timer? _reconnectTimer;
   static String? _currentSubscription;
   static String? _currentDeviceId;
+  static bool _isRefreshing = false; // ✅ Prevent multiple refresh attempts
 
   // ---- Stream Controllers ----
   /// Broadcasts connection status changes (true = connected, false = disconnected)
@@ -76,10 +79,21 @@ class WebSocketService {
   // ---- Public Getters ----
   static bool get isConnected => _isConnected;
 
+  /// Server timestamp from the latest message.
+  /// Used to compare vwv_last_seen against the SERVER's clock
+  /// instead of the phone's clock (avoids timezone mismatch).
+  static DateTime? lastServerTimestamp;
+
   // ============================================================
   // CONNECT - Call after login or app restart
   // ============================================================
-  static Future<bool> connect() async {
+  /// Connect to the server WebSocket.
+  /// Has a 5-second timeout so it won't hang when there's no internet
+  /// (e.g., phone is connected to ESP32 hotspot).
+  ///
+  /// [skipExpiryCheck] - set to true when calling after a token refresh
+  /// to avoid an infinite loop (connect → refresh → connect → refresh...).
+  static Future<bool> connect({bool skipExpiryCheck = false}) async {
     if (_isConnected || _isConnecting) {
       print("🔌 WS: Already connected or connecting");
       return _isConnected;
@@ -98,44 +112,26 @@ class WebSocketService {
         return false;
       }
 
-      print("🔌 WS: Connecting to $_wsHost:$_wsPort...");
-
-      // Step 2: Connect with Authorization header
-      _channel = IOWebSocketChannel.connect(
-        'ws://$_wsHost:$_wsPort',
-        headers: {
-          'Authorization': 'Bearer $token',
-        },
-      );
-
-      // Step 3: Wait for connection
-      await _channel!.ready;
-
-      print("✅ WS: Connected!");
-      _isConnected = true;
-      _isConnecting = false;
-      _reconnectAttempts = 0;
-      _connectionController.add(true);
-
-      // Step 4: Listen for messages
-      _channel!.stream.listen(
-        _handleMessage,
-        onError: (error) {
-          print("❌ WS: Stream error: $error");
-          _handleDisconnect();
-        },
-        onDone: () {
-          print("🔌 WS: Connection closed (code: ${_channel?.closeCode}, reason: ${_channel?.closeReason})");
-          _handleDisconnect();
-        },
-      );
-
-      // Step 5: Re-subscribe if we had a previous subscription (reconnect case)
-      if (_currentSubscription != null) {
-        subscribeTo(_currentSubscription!, deviceId: _currentDeviceId);
+      // ✅ Step 1.5: Check token expiry BEFORE connecting
+      // Skip this check if we just refreshed the token (avoids loop)
+      if (!skipExpiryCheck && AuthService.isTokenExpired()) {
+        print("🔑 WS: Token expired — attempting silent refresh before connect...");
+        _isConnecting = false;
+        final success = await AuthService.refreshTokenAndReconnect();
+        return success;
       }
 
-      return true;
+      print("🔌 WS: Connecting to $_wsHost:$_wsPort...");
+      return await _connectWithToken(token);
+    } on TimeoutException catch (e) {
+      print("⏱️ WS: $e");
+      _isConnected = false;
+      _isConnecting = false;
+      _channel?.sink.close();
+      _channel = null;
+      _connectionController.add(false);
+      // Don't auto-reconnect on timeout — user may be in AP mode intentionally
+      return false;
     } catch (e) {
       print("❌ WS: Connection failed: $e");
       _isConnected = false;
@@ -143,6 +139,78 @@ class WebSocketService {
       _connectionController.add(false);
       _scheduleReconnect();
       return false;
+    }
+  }
+
+  /// Internal: connect using a specific token
+  static Future<bool> _connectWithToken(String token) async {
+    try {
+      // Connect with Authorization header
+      _channel = IOWebSocketChannel.connect(
+        'ws://$_wsHost:$_wsPort',
+        headers: {
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      // Wait for connection WITH TIMEOUT
+      await _channel!.ready.timeout(
+        _connectTimeout,
+        onTimeout: () {
+          throw TimeoutException(
+            'WebSocket connection timed out after ${_connectTimeout.inSeconds}s',
+          );
+        },
+      );
+
+      print("✅ WS: Connected!");
+      _isConnected = true;
+      _isConnecting = false;
+      _reconnectAttempts = 0;
+      _isRefreshing = false;
+      _connectionController.add(true);
+
+      // Listen for messages
+      _channel!.stream.listen(
+        _handleMessage,
+        onError: (error) {
+          print("❌ WS: Stream error: $error");
+          _handleDisconnect();
+        },
+        onDone: () {
+          final closeCode = _channel?.closeCode;
+          final closeReason = _channel?.closeReason;
+          print("🔌 WS: Connection closed (code: $closeCode, reason: $closeReason)");
+
+          // ✅ Detect auth rejection: common close codes for auth failure
+          // 4001/4003 = custom auth codes, 1008 = policy violation, 403 in reason
+          if (closeCode == 4001 ||
+              closeCode == 4003 ||
+              closeCode == 1008 ||
+              (closeReason != null &&
+                  (closeReason.toLowerCase().contains('auth') ||
+                      closeReason.toLowerCase().contains('token') ||
+                      closeReason.toLowerCase().contains('expired') ||
+                      closeReason.toLowerCase().contains('unauthorized')))) {
+            print("🔑 WS: Auth rejection detected — attempting token refresh...");
+            _handleAuthRejection();
+            return;
+          }
+
+          _handleDisconnect();
+        },
+      );
+
+      // Re-subscribe if we had a previous subscription (reconnect case)
+      if (_currentSubscription != null) {
+        subscribeTo(_currentSubscription!, deviceId: _currentDeviceId);
+      }
+
+      return true;
+    } on TimeoutException {
+      rethrow;
+    } catch (e) {
+      rethrow;
     }
   }
 
@@ -207,6 +275,16 @@ class WebSocketService {
         case 'devices_data':
           final List<dynamic> deviceList = data['device_list'] ?? [];
           print("📊 WS: Received ${deviceList.length} devices");
+
+          // Save server timestamp for online/offline comparison
+          // Server sends: "timestamp":"2026-03-21T16:08:31+00:00" (UTC)
+          final serverTs = data['timestamp']?.toString();
+          if (serverTs != null) {
+            try {
+              lastServerTimestamp = DateTime.parse(serverTs);
+            } catch (_) {}
+          }
+
           _deviceListController.add(deviceList);
           break;
 
@@ -226,13 +304,54 @@ class WebSocketService {
         // ---- Error from server ----
         default:
           if (data.containsKey('error')) {
+            final errorMsg = data['error'].toString().toLowerCase();
             print("⚠️ WS: Server error: ${data['error']}");
+
+            // ✅ Detect auth errors in message payload
+            if (errorMsg.contains('token') ||
+                errorMsg.contains('auth') ||
+                errorMsg.contains('expired') ||
+                errorMsg.contains('unauthorized') ||
+                errorMsg.contains('jwt')) {
+              print("🔑 WS: Auth error in message — refreshing token...");
+              _handleAuthRejection();
+            }
           } else {
             print("⚠️ WS: Unknown event: $event");
           }
       }
     } catch (e) {
       print("❌ WS: Parse error: $e");
+    }
+  }
+
+  // ============================================================
+  // INTERNAL: Handle auth rejection — refresh token and reconnect
+  // ============================================================
+  static Future<void> _handleAuthRejection() async {
+    if (_isRefreshing) {
+      print("🔑 WS: Already refreshing, skipping...");
+      return;
+    }
+    _isRefreshing = true;
+    _isConnected = false;
+    _isConnecting = false;
+    _channel = null;
+    _connectionController.add(false);
+
+    print("🔑 WS: Attempting token refresh and reconnect...");
+    final success = await AuthService.refreshTokenAndReconnect();
+
+    if (success) {
+      print("✅ WS: Token refreshed and reconnected!");
+      // Re-subscribe to whatever we were listening to
+      if (_currentSubscription != null) {
+        subscribeTo(_currentSubscription!, deviceId: _currentDeviceId);
+      }
+    } else {
+      print("❌ WS: Token refresh failed — user may need to re-login");
+      _isRefreshing = false;
+      // Don't schedule normal reconnect — it would fail with same expired token
     }
   }
 
@@ -260,6 +379,17 @@ class WebSocketService {
     _reconnectTimer = Timer(_reconnectDelay, () {
       connect();
     });
+  }
+
+  // ============================================================
+  // RESET: Reset reconnect counter (call when network changes)
+  // ============================================================
+  /// Reset the reconnect attempt counter.
+  /// Call this when the phone switches back to a network with internet
+  /// so it can try connecting to the server again.
+  static void resetReconnectAttempts() {
+    _reconnectAttempts = 0;
+    _isRefreshing = false; // ✅ Also reset refresh flag
   }
 
   // ============================================================

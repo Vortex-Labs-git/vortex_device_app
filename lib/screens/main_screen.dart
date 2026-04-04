@@ -3,6 +3,7 @@ import '../utils/constants.dart';
 import 'home_screen.dart';
 import 'user_screen.dart';
 import 'about_screen.dart';
+import 'manual_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -15,6 +16,7 @@ class _MainScreenState extends State<MainScreen> {
   final List<Widget> _pages = [
     const HomeScreen(),
     const UserScreen(),
+    const ManualScreen(),
     const AboutScreen(),
   ];
 
@@ -35,7 +37,10 @@ class _MainScreenState extends State<MainScreen> {
           ),
         ],
       ),
-      body: _pages[_currentIndex],
+      body: IndexedStack(
+        index: _currentIndex,
+        children: _pages,
+      ),
       floatingActionButton: _currentIndex == 0
           ? FloatingActionButton(
               backgroundColor: AppColors.primary,
@@ -46,11 +51,13 @@ class _MainScreenState extends State<MainScreen> {
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (index) { setState(() { _currentIndex = index; }); },
+        type: BottomNavigationBarType.fixed,
         selectedItemColor: AppColors.primary,
         unselectedItemColor: Colors.grey,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: AppStrings.home),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: AppStrings.user),
+          BottomNavigationBarItem(icon: Icon(Icons.menu_book), label: 'Manual'),
           BottomNavigationBarItem(icon: Icon(Icons.info), label: AppStrings.about),
         ],
       ),

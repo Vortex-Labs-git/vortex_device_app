@@ -5,122 +5,113 @@ class AboutScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          const SizedBox(height: 40),
-          // Logo / Icon Container
-          Container(
-            padding: const EdgeInsets.all(30),
-            decoration: BoxDecoration(
-              color: const Color(0xFFE8EAF6), // Light indigo background
-              shape: BoxShape.circle,
+    return Container(
+      color: Colors.white,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 8),
+
+            // ── About Us Card ──
+            _buildCard(
+              icon: Icons.info_outline,
+              title: 'About Us',
+              body:
+                  'Vortex Labs specializes in cutting-edge automation and AI '
+                  'solutions for agriculture and industry. Our flagship product, the '
+                  'Vortex Smart Valve, is an IoT-enabled valve with sensor '
+                  'integration capabilities. We also offer services in 3D printing, '
+                  'PCB manufacturing, CAD design, website creation and hosting, '
+                  'and custom vending machine development.',
             ),
-            // CHANGED: Simple Gear Icon (No stars)
-            child: const Icon(
-              Icons.settings, 
-              size: 80,
-              color: Color(0xFF3F51B5), // Indigo color
+
+            const SizedBox(height: 20),
+
+            // ── Our Mission Card ──
+            _buildCard(
+              icon: Icons.build_outlined,
+              title: 'Our Mission',
+              body:
+                  'Our mission is to uplift Sri Lanka\'s economy by advancing the '
+                  'local production industry through IoT and related technologies, '
+                  'reducing the need for imports.',
             ),
-          ),
-          const SizedBox(height: 24),
-          
-          // CHANGED: Fixed Typo "Vortex"
-          const Text(
-            'Vortex Labs',
-            style: TextStyle(
-              fontSize: 32,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF3F51B5),
+
+            const SizedBox(height: 20),
+
+            // ── Our Vision Card ──
+            _buildCard(
+              icon: Icons.thumb_up_outlined,
+              title: 'Our Vision',
+              body:
+                  'To become a leading force in technological innovation, '
+                  'empowering Sri Lanka and beyond through sustainable, '
+                  'locally-developed automation and AI solutions that drive '
+                  'self-reliance and industrial growth.',
             ),
-          ),
-          
-          const SizedBox(height: 16),
-          
-          // Version Badge
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: const Color(0xFFC5CAE9),
-              borderRadius: BorderRadius.circular(20),
+
+            const SizedBox(height: 20),
+
+            // ── Our Values Card ──
+            _buildCard(
+              icon: Icons.star_outline,
+              title: 'Our Values',
+              body:
+                  'Innovation, Local empowerment, Technical excellence, '
+                  'Versatility, Sustainability, Integrity, Customer focus, '
+                  'Engineering-driven leadership.',
             ),
-            child: const Text(
-              'Version 1.0.0',
-              style: TextStyle(
-                color: Color(0xFF3F51B5),
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-          
-          const SizedBox(height: 32),
-          
-          const Text(
-            'Motorized Valve Control System',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w500),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Monitor and control your motorized valves remotely via Bluetooth.',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 16, color: Colors.grey),
-          ),
-          
-          const SizedBox(height: 40),
-          
-          // Feature List
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Colors.grey[50], // Very light grey
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.grey[200]!),
-            ),
-            child: Column(
-              children: [
-                _buildFeatureRow(Icons.bluetooth, 'Bluetooth Connectivity'),
-                const SizedBox(height: 16),
-                _buildFeatureRow(Icons.speed, 'Real-time Monitoring'),
-                const SizedBox(height: 16),
-                _buildFeatureRow(Icons.schedule, 'Scheduled Operations'),
-                const SizedBox(height: 16),
-                _buildFeatureRow(Icons.notifications_active, 'Smart Alerts'),
-              ],
-            ),
-          ),
-          
-          const SizedBox(height: 40),
-          
-          // Copyright
-          const Text(
-            '© 2025 Vortex Labs',
-            style: TextStyle(color: Colors.grey),
-          ),
-        ],
+
+            const SizedBox(height: 30),
+          ],
+        ),
       ),
     );
   }
 
-  // Helper widget to build the feature rows
-
-// Helper widget to build the feature rows
-  Widget _buildFeatureRow(IconData icon, String text) {
-    return Row(
-      children: [
-        Icon(icon, color: const Color(0xFF3F51B5)),
-        const SizedBox(width: 16),
-        // FIX: Wrapped Text in Expanded to prevent overflow
-        Expanded(
-          child: Text(
-            text,
-            style: const TextStyle(fontSize: 16),
-            overflow: TextOverflow.ellipsis, // Adds "..." if it's still too long
+  Widget _buildCard({
+    required IconData icon,
+    required String title,
+    required String body,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5F5FA),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE0E0E8)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: const Color(0xFF3F51B5), size: 28),
+              const SizedBox(width: 12),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF3F51B5),
+                ),
+              ),
+            ],
           ),
-        ),
-      ],
+          const SizedBox(height: 14),
+          Text(
+            body,
+            style: const TextStyle(
+              fontSize: 15,
+              color: Color(0xFF444444),
+              height: 1.5,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

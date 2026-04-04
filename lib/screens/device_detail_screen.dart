@@ -5,13 +5,19 @@ import 'dart:math' as math;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/websocket_service.dart';
+import '../services/esp_direct_service.dart';
 import 'manual_control_screen.dart';
 import 'wifi_setup_screen.dart';
 
 class DeviceDetailScreen extends StatefulWidget {
   final Map<String, dynamic> deviceData;
+  final bool isDirectMode; // true = ESP32 direct, false = server mode
 
-  const DeviceDetailScreen({super.key, required this.deviceData});
+  const DeviceDetailScreen({
+    super.key,
+    required this.deviceData,
+    this.isDirectMode = false,
+  });
 
   @override
   State<DeviceDetailScreen> createState() => _DeviceDetailScreenState();
@@ -24,9 +30,15 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
   // Control mode: 'manual', 'schedule', 'sensor'
   String _controlMode = 'manual';
 
+  // ── Schedule/Manual mode toggle ──
+  // This tells the ESP32 whether to follow schedule or user commands
+  // Synced with user_schedule_ctrl from DB
+  bool _isScheduleMode = false;
+  bool _isSwitchingMode = false; // True while sending mode change to server
+
   // Valve control
   bool _isUpdating = false;
-  bool _valveControlEnabled = false; // Toggle: ON = state mode, OFF = angle mode
+  bool _valveControlEnabled = true; // Toggle: ON = state mode, OFF = angle mode
 
   // ── Valve state confirmation tracking ──
   // When user sends a command, we track the expected angle
@@ -53,6 +65,11 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
   StreamSubscription<Map<String, dynamic>>? _scheduleSub;
   StreamSubscription<bool>? _connectionSub;
 
+  // ── ESP32 Direct Mode subscriptions ──
+  StreamSubscription<Map<String, dynamic>>? _espValveDataSub;
+  StreamSubscription<bool>? _espConnectionSub;
+  Timer? _espPollTimer; // Periodic polling for valve state in direct mode
+
   // Day options
   static const List<String> _dayOptions = [
     'Every day',
@@ -65,11 +82,31 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
     'Sunday',
   ];
 
+  // Shortcut for direct mode check
+  bool get _isDirectMode => widget.isDirectMode;
+
   @override
   void initState() {
     super.initState();
     _device = Map<String, dynamic>.from(widget.deviceData);
-    _controlMode = _device['control_mode'] ?? 'manual';
+
+    // Initialize schedule mode from DB field user_schedule_ctrl
+    final scheduleCtrl = _device['user_schedule_ctrl'];
+    _isScheduleMode = (scheduleCtrl == 1 || scheduleCtrl == '1' || scheduleCtrl == true);
+
+    // In direct mode, force manual control only
+    // Otherwise, set control mode based on schedule state
+    if (_isDirectMode) {
+      _controlMode = 'manual';
+      _isScheduleMode = false;
+      // Clear cached valve state — ESP32 will provide the real state
+      // on first poll response. Without this, stale DB data shows wrong open/close.
+      _device['vwv_pos'] = null;
+      _device['vwv_is_open'] = null;
+      _device['vwv_is_close'] = null;
+    } else {
+      _controlMode = _isScheduleMode ? 'schedule' : 'manual';
+    }
 
     // Initialize slider angle from DB
     final vwvPos = _device['vwv_pos'];
@@ -77,7 +114,11 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
       _sliderAngle = (int.tryParse(vwvPos.toString()) ?? 0).toDouble();
     }
 
-    _setupWebSocket();
+    if (_isDirectMode) {
+      _setupEspDirect();
+    } else {
+      _setupWebSocket();
+    }
   }
 
   @override
@@ -85,10 +126,15 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
     _detailSub?.cancel();
     _scheduleSub?.cancel();
     _connectionSub?.cancel();
+    _espValveDataSub?.cancel();
+    _espConnectionSub?.cancel();
+    _espPollTimer?.cancel();
     _confirmationTimer?.cancel();
     _angleEditDebounce?.cancel();
-    // Switch back to device_list when leaving
-    WebSocketService.subscribeTo('device_list');
+    // Switch back to device_list when leaving (server mode only)
+    if (!_isDirectMode) {
+      WebSocketService.subscribeTo('device_list');
+    }
     super.dispose();
   }
 
@@ -104,6 +150,18 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
         setState(() {
           _device = {..._device, ...data};
         });
+
+        // Sync schedule mode from server data (if not currently switching)
+        if (!_isSwitchingMode) {
+          final scheduleCtrl = _device['user_schedule_ctrl'];
+          final serverScheduleMode = (scheduleCtrl == 1 || scheduleCtrl == '1' || scheduleCtrl == true);
+          if (serverScheduleMode != _isScheduleMode) {
+            setState(() {
+              _isScheduleMode = serverScheduleMode;
+              _controlMode = serverScheduleMode ? 'schedule' : 'manual';
+            });
+          }
+        }
 
         // ── Check confirmation: compare vwv_pos with pending target ──
         if (_waitingForConfirmation && _pendingTargetAngle != null) {
@@ -145,11 +203,180 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
   }
 
   // ============================================================
+  // ESP32 DIRECT MODE: Listen for valve data from ESP32
+  // ============================================================
+  void _setupEspDirect() {
+    final esp = EspDirectService.instance;
+    _wsConnected = esp.isConnected; // reuse the flag for UI
+
+    _espConnectionSub = esp.connectionStream.listen((connected) {
+      if (mounted) setState(() => _wsConnected = connected);
+    });
+
+    // Listen for valve_data from ESP32
+    // Update _device fields so all existing UI logic (open/close button,
+    // confirmation, slider) works the same as server mode
+    _espValveDataSub = esp.valveDataStream.listen((data) {
+      if (!mounted) return;
+
+      final valveData = data['get_valvedata'] ?? {};
+      final angle = valveData['angle'];
+      final isOpen = valveData['is_open'];
+      final isClose = valveData['is_close'];
+
+      // Map ESP32 valve_data fields → server DB field equivalents
+      // so _getActualPosition(), _isValveOpen(), confirmation all work
+      if (angle != null) {
+        final angleInt = angle is int ? angle : int.tryParse(angle.toString()) ?? 0;
+        setState(() {
+          _device['vwv_pos'] = angleInt.toString();
+          _device['vwv_is_open'] = (isOpen == true) ? 1 : 0;
+          _device['vwv_is_close'] = (isClose == true) ? 1 : 0;
+          // Update slider only if user is not dragging
+          if (!_userIsEditingAngle) {
+            _sliderAngle = angleInt.toDouble();
+          }
+        });
+      }
+
+      // Check confirmation (same logic as server mode)
+      if (_waitingForConfirmation && _pendingTargetAngle != null) {
+        final actualPos = _getActualPosition();
+        if (actualPos == _pendingTargetAngle) {
+          _onConfirmationSuccess();
+        }
+      }
+
+      print("📱 ESP32 Direct: valve angle=$angle, open=$isOpen, close=$isClose");
+    });
+
+    // Request initial valve data from ESP32
+    _requestEspValveData();
+
+    // Poll valve data every 2 seconds (ESP32 doesn't push like server WebSocket)
+    // This keeps the UI updated with the real valve state
+    _espPollTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (mounted && esp.isAuthenticated) {
+        _requestEspValveData();
+      }
+    });
+  }
+
+  /// Helper to request valve data from ESP32
+  void _requestEspValveData() {
+    final esp = EspDirectService.instance;
+    if (!esp.isAuthenticated) return;
+
+    final userId = _device['user_id']?.toString() ?? 'app_user';
+    final deviceId = _device['id']?.toString() ?? '';
+    final deviceName = _device['vwv_name'] ?? _device['device_name'] ?? 'Valve';
+    esp.requestValveData(
+      userId: userId,
+      deviceId: deviceId,
+      deviceName: deviceName,
+    );
+  }
+
+  // ============================================================
+  // MODE SWITCH: Toggle between Manual and Schedule mode
+  // ============================================================
+  /// Send mode change to server via REST API.
+  /// This tells the ESP32 (via MQTT) whether to follow
+  /// schedule timings or user manual commands.
+  ///
+  /// Sends to control_device.php:
+  /// {
+  ///   "event": "set_valve_basic",
+  ///   "device_id": "VA202601001",
+  ///   "set_controller": { "schedule": true/false, "sensor": false },
+  ///   "valve_data": { "set_angle": false, "angle": <current> },
+  ///   "ota_update": false
+  /// }
+  Future<void> _sendModeSwitch(bool scheduleMode) async {
+    setState(() => _isSwitchingMode = true);
+
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('access_token');
+
+    try {
+      final currentAngle = _getActualPosition();
+      final requestBody = {
+        'event': 'set_valve_basic',
+        'timestamp': DateTime.now().toUtc().toIso8601String(),
+        'device_id': _device['id'],
+        'set_controller': {
+          'schedule': scheduleMode,
+          'sensor': false,
+        },
+        'valve_data': {
+          'name': _device['vwv_name'] ?? _device['device_name'] ?? 'Unknown',
+          'set_angle': true,
+          'angle': currentAngle,
+        },
+        'ota_update': false,
+      };
+
+      print("📤 Mode Switch: schedule=$scheduleMode → ${jsonEncode(requestBody)}");
+
+      final response = await http.post(
+        Uri.parse('https://vortexlabsofficial.com/vortex_app/control_device.php'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(requestBody),
+      );
+
+      print("Mode Switch Response: ${response.body}");
+
+      final result = jsonDecode(response.body);
+      if (result['success'] == true) {
+        if (mounted) {
+          setState(() {
+            _isScheduleMode = scheduleMode;
+            _controlMode = scheduleMode ? 'schedule' : 'manual';
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(scheduleMode
+                  ? 'Switched to Schedule mode — valve follows schedule'
+                  : 'Switched to Manual mode — you control the valve'),
+              backgroundColor: Colors.blue,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error: ${result['message']}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      print("Mode Switch Error: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Connection failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSwitchingMode = false);
+    }
+  }
+
+  // ============================================================
   // VALVE: Get current state from DB fields
   // ============================================================
 
-  /// Check if device is online: compare vwv_last_seen with phone time
-  /// If gap > 5 seconds → offline
+  /// Check if device is online: compare vwv_last_seen with phone time.
+  /// If gap > 30 seconds → offline.
   bool _isDeviceOnline(String? lastSeen) {
     if (lastSeen == null || lastSeen.isEmpty || lastSeen == 'NULL') {
       return false;
@@ -228,15 +455,45 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
   }
 
   // ============================================================
-  // VALVE: Send Open/Close command via REST API
+  // VALVE: Send Open/Close command via REST API or ESP32 Direct
   // ============================================================
   Future<void> _sendControlCommand(String command) async {
     setState(() => _isUpdating = true);
 
+    int targetAngle = (command == "Open") ? 90 : 0;
+
+    // ── ESP32 DIRECT MODE: Send directly to ESP32 ──
+    if (_isDirectMode) {
+      final deviceName = _device['vwv_name'] ?? _device['device_name'] ?? 'Valve';
+      print("📤 ESP32 Direct: set_valve_basic angle=$targetAngle");
+      EspDirectService.instance.setValveAngle(
+        angle: targetAngle,
+        deviceName: deviceName,
+      );
+
+      // Request valve data back so ESP32 sends its updated state
+      // The polling timer also does this, but this ensures a quick response
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) _requestEspValveData();
+      });
+
+      if (mounted) {
+        _startConfirmationWait(targetAngle);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Direct command sent! Valve ${command == "Open" ? "opening" : "closing"}...'),
+            backgroundColor: Colors.blue,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+        setState(() => _isUpdating = false);
+      }
+      return;
+    }
+
+    // ── SERVER MODE: Send via REST API ──
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('access_token');
-
-    int targetAngle = (command == "Open") ? 90 : 0;
 
     try {
       final requestBody = {
@@ -309,14 +566,14 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
   // VALVE: Confirmation Wait Logic
   // ============================================================
 
-  /// Start waiting for vwv_pos to match targetAngle (up to 10 seconds)
+  /// Start waiting for vwv_pos to match targetAngle (up to 20 seconds)
   void _startConfirmationWait(int targetAngle) {
     _confirmationTimer?.cancel();
 
     setState(() {
       _waitingForConfirmation = true;
       _pendingTargetAngle = targetAngle;
-      _confirmationCountdown = 10;
+      _confirmationCountdown = 20;
     });
 
     // Check every second
@@ -356,7 +613,13 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
     }
   }
 
-  /// Timeout - revert toggle/slider to actual DB position
+  /// Timeout - DON'T revert the UI. Just stop the countdown spinner
+  /// and let WebSocket naturally update the UI when DB catches up.
+  ///
+  /// Why: The valve may have physically moved but the DB update
+  /// arrived just after our 20-second window. The next WebSocket
+  /// push (within ~2 seconds) will deliver the correct vwv_pos
+  /// and the UI will update smoothly via _detailSub / _espValveDataSub.
   void _onConfirmationTimeout() {
     final actualPos = _getActualPosition();
     final targetWas = _pendingTargetAngle;
@@ -365,25 +628,27 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
       _waitingForConfirmation = false;
       _pendingTargetAngle = null;
       _confirmationCountdown = 0;
-      // Revert slider to actual position
-      _sliderAngle = actualPos.toDouble();
+      // ✅ DON'T revert _sliderAngle here — let WebSocket update it naturally
+      // The next device_detail push will set the real position
     });
 
-    // Check if it partially reached
-    if (targetWas != null && actualPos != targetWas) {
+    // Check if it actually reached in the last moment
+    if (targetWas != null && actualPos == targetWas) {
+      _onConfirmationSuccess();
+    } else {
+      // Valve hasn't confirmed yet — show a gentle message
+      // The UI will self-correct within 2-4 seconds when
+      // the next WebSocket push arrives with the updated vwv_pos
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
+          const SnackBar(
             content: Text(
-                '⚠️ Valve did not reach target ($targetWas°). Current position: $actualPos°'),
+                '⏳ Valve is still responding. Position will update shortly.'),
             backgroundColor: Colors.orange,
-            duration: const Duration(seconds: 3),
+            duration: Duration(seconds: 3),
           ),
         );
       }
-    } else {
-      // It actually reached in the last moment
-      _onConfirmationSuccess();
     }
   }
 
@@ -394,6 +659,35 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
   Future<void> _sendAngleCommand(int angle) async {
     setState(() => _isAngleUpdating = true);
 
+    // ── ESP32 DIRECT MODE: Send directly to ESP32 ──
+    if (_isDirectMode) {
+      final deviceName = _device['vwv_name'] ?? _device['device_name'] ?? 'Valve';
+      print("📤 ESP32 Direct: set_valve_basic angle=$angle");
+      EspDirectService.instance.setValveAngle(
+        angle: angle,
+        deviceName: deviceName,
+      );
+
+      // Request valve data back so ESP32 sends its updated state
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) _requestEspValveData();
+      });
+
+      if (mounted) {
+        _startConfirmationWait(angle);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Direct command sent! Setting angle to $angle°...'),
+            backgroundColor: Colors.blue,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+        setState(() => _isAngleUpdating = false);
+      }
+      return;
+    }
+
+    // ── SERVER MODE: Send via REST API ──
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('access_token');
 
@@ -730,14 +1024,16 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
     return Scaffold(
       backgroundColor: Colors.grey[100],
       appBar: AppBar(
-        title: const Text('Vortex Labs'),
-        backgroundColor: const Color(0xFF3F51B5),
+        title: Text(_isDirectMode ? 'Direct Control' : 'Vortex Labs'),
+        backgroundColor: _isDirectMode ? Colors.green[700] : const Color(0xFF3F51B5),
         foregroundColor: Colors.white,
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: Icon(
-              _wsConnected ? Icons.wifi : Icons.wifi_off,
+              _wsConnected
+                  ? (_isDirectMode ? Icons.settings_remote : Icons.wifi)
+                  : Icons.wifi_off,
               color: _wsConnected ? Colors.greenAccent : Colors.red,
             ),
           ),
@@ -748,15 +1044,127 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Direct mode banner hidden
             _buildInfoCard(),
             const SizedBox(height: 16),
-            _buildControlModeCard(),
+            // ── Mode toggle: Manual ↔ Schedule ──
+            if (!_isDirectMode) _buildModeToggleCard(),
+            if (!_isDirectMode) const SizedBox(height: 16),
+            // Show control mode selector and valve/schedule cards based on mode
+            if (!_isScheduleMode && !_isDirectMode) ...[
+              _buildControlModeCard(),
+              const SizedBox(height: 16),
+            ],
+            if (_isScheduleMode) _buildScheduleCard(),
+            if (!_isScheduleMode && _controlMode == 'manual') _buildValveControlCard(),
+            if (!_isScheduleMode && _controlMode == 'schedule') _buildScheduleCard(),
+            if (!_isScheduleMode && _controlMode == 'sensor') _buildSensorCard(),
             const SizedBox(height: 16),
-            if (_controlMode == 'manual') _buildValveControlCard(),
-            if (_controlMode == 'schedule') _buildScheduleCard(),
-            if (_controlMode == 'sensor') _buildSensorCard(),
-            const SizedBox(height: 16),
-            _buildWifiButton(),
+            // WiFi button removed
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // MODE TOGGLE CARD: Manual ↔ Schedule
+  // ============================================================
+  Widget _buildModeToggleCard() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Text(
+              'Control method',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+                color: Colors.grey[800],
+              ),
+            ),
+            const SizedBox(height: 12),
+            // Toggle row
+            Row(
+              children: [
+                // Icon
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: _isScheduleMode
+                        ? Colors.orange.shade50
+                        : Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    _isScheduleMode ? Icons.schedule : Icons.pan_tool,
+                    color: _isScheduleMode ? Colors.orange : const Color(0xFF3F51B5),
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                // Labels
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            'Manual',
+                            style: TextStyle(
+                              fontWeight: !_isScheduleMode ? FontWeight.bold : FontWeight.normal,
+                              fontSize: 14,
+                              color: !_isScheduleMode ? const Color(0xFF3F51B5) : Colors.grey,
+                            ),
+                          ),
+                          Text(
+                            '  /  ',
+                            style: TextStyle(fontSize: 14, color: Colors.grey[400]),
+                          ),
+                          Text(
+                            'Schedule',
+                            style: TextStyle(
+                              fontWeight: _isScheduleMode ? FontWeight.bold : FontWeight.normal,
+                              fontSize: 14,
+                              color: _isScheduleMode ? Colors.orange : Colors.grey,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        _isScheduleMode
+                            ? 'Valve follows the schedule automatically'
+                            : 'You control the valve position',
+                        style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                      ),
+                    ],
+                  ),
+                ),
+                // Switch
+                if (_isSwitchingMode)
+                  const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                else
+                  Switch(
+                    value: _isScheduleMode,
+                    activeColor: Colors.orange,
+                    inactiveThumbColor: const Color(0xFF3F51B5),
+                    inactiveTrackColor: const Color(0xFF3F51B5).withOpacity(0.3),
+                    onChanged: (value) {
+                      _sendModeSwitch(value);
+                    },
+                  ),
+              ],
+            ),
           ],
         ),
       ),
@@ -767,7 +1175,9 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
   // INFO CARD
   // ============================================================
   Widget _buildInfoCard() {
-    bool isOnline = _isDeviceOnline(_device['vwv_last_seen']?.toString());
+    bool isOnline = _isDirectMode ? true : _isDeviceOnline(_device['vwv_last_seen']?.toString());
+    String statusText = _isDirectMode ? 'Direct Connected' : (isOnline ? 'online' : 'offline');
+    Color statusColor = isOnline ? Colors.green : Colors.red;
 
     return Card(
       child: Padding(
@@ -794,15 +1204,15 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
                       width: 8,
                       height: 8,
                       decoration: BoxDecoration(
-                        color: isOnline ? Colors.green : Colors.red,
+                        color: statusColor,
                         shape: BoxShape.circle,
                       ),
                     ),
                     const SizedBox(width: 6),
                     Text(
-                      isOnline ? 'online' : 'offline',
+                      statusText,
                       style: TextStyle(
-                        color: isOnline ? Colors.green : Colors.red,
+                        color: statusColor,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -876,34 +1286,48 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
 
   Widget _buildModeButton(String mode, IconData icon, String label) {
     bool isSelected = _controlMode == mode;
+    // In direct mode, only manual control is allowed
+    bool isDisabled = _isDirectMode && (mode == 'schedule' || mode == 'sensor');
 
     return GestureDetector(
-      onTap: () {
-        setState(() => _controlMode = mode);
-      },
-      child: Container(
-        width: 80,
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF3F51B5) : Colors.grey[200],
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          children: [
-            Icon(
-              icon,
-              color: isSelected ? Colors.white : Colors.grey[600],
-              size: 28,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
+      onTap: isDisabled
+          ? () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Schedule & Sensor require server connection'),
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            }
+          : () {
+              setState(() => _controlMode = mode);
+            },
+      child: Opacity(
+        opacity: isDisabled ? 0.35 : 1.0,
+        child: Container(
+          width: 80,
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: isSelected ? const Color(0xFF3F51B5) : Colors.grey[200],
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            children: [
+              Icon(
+                isDisabled ? Icons.lock_outline : icon,
                 color: isSelected ? Colors.white : Colors.grey[600],
-                fontSize: 12,
+                size: 28,
               ),
-            ),
-          ],
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  color: isSelected ? Colors.white : Colors.grey[600],
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -966,46 +1390,9 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
 
             // ── STATE MODE (when toggle is ON) ──
             if (_valveControlEnabled) ...[
-              // Waiting indicator
-              if (_waitingForConfirmation) ...[
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.blue.shade200),
-                  ),
-                  child: Row(
-                    children: [
-                      const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          'Waiting for valve... ${_confirmationCountdown}s',
-                          style: TextStyle(
-                            color: Colors.blue.shade700,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ),
-                      Text(
-                        'Target: ${_pendingTargetAngle == 90 ? "Open" : "Close"}',
-                        style: TextStyle(
-                          color: Colors.blue.shade700,
-                          fontWeight: FontWeight.w500,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-              ],
+              // Waiting indicator hidden in state mode
+              // if (_waitingForConfirmation) ...[
+              // ],
 
               // By state row
               Row(
@@ -1614,11 +2001,16 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
       width: double.infinity,
       child: ElevatedButton(
         onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-                builder: (context) => const WifiSetupScreen()),
-          );
+          if (_isDirectMode) {
+            // In direct mode, ESP32 is already connected — show simple dialog
+            _showWifiCredentialsDialog();
+          } else {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (context) => const WifiSetupScreen()),
+            );
+          }
         },
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFF3F51B5),
@@ -1628,7 +2020,146 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
             borderRadius: BorderRadius.circular(8),
           ),
         ),
-        child: const Text('Change WiFi Connection'),
+        child: const Text('WiFi Only Direct'),
+      ),
+    );
+  }
+
+  // ============================================================
+  // WIFI CREDENTIALS DIALOG (Direct Mode)
+  // ============================================================
+  /// Shows a popup to enter home WiFi SSID and password.
+  /// Sends set_valve_wifi to the already-connected ESP32.
+  /// Architecture Doc Page 13.
+  void _showWifiCredentialsDialog() {
+    final ssidController = TextEditingController();
+    final passwordController = TextEditingController();
+    bool obscurePassword = true;
+    bool isSending = false;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.wifi, color: Color(0xFF3F51B5)),
+              SizedBox(width: 10),
+              Text('Set Home WiFi'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Enter your home WiFi credentials. The valve will restart and connect to this network.',
+                style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: ssidController,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: 'WiFi Name (SSID)',
+                  hintText: 'Enter your home WiFi name',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.wifi),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: passwordController,
+                obscureText: obscurePassword,
+                decoration: InputDecoration(
+                  labelText: 'WiFi Password',
+                  hintText: 'Enter WiFi password',
+                  border: const OutlineInputBorder(),
+                  prefixIcon: const Icon(Icons.lock),
+                  suffixIcon: IconButton(
+                    icon: Icon(obscurePassword
+                        ? Icons.visibility
+                        : Icons.visibility_off),
+                    onPressed: () {
+                      setDialogState(
+                          () => obscurePassword = !obscurePassword);
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSending ? null : () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton.icon(
+              onPressed: isSending
+                  ? null
+                  : () {
+                      final ssid = ssidController.text.trim();
+                      final password = passwordController.text;
+
+                      if (ssid.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                              content: Text('Please enter WiFi name')),
+                        );
+                        return;
+                      }
+
+                      if (!EspDirectService.instance.isAuthenticated) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Not connected to valve. Go back and reconnect.'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                        return;
+                      }
+
+                      setDialogState(() => isSending = true);
+
+                      // Send to ESP32 per Architecture Doc Page 13
+                      EspDirectService.instance.setWifiCredentials(
+                        ssid: ssid,
+                        password: password,
+                      );
+
+                      print("📤 ESP32: set_valve_wifi ssid=$ssid");
+
+                      // ESP32 will restart — connection will be lost
+                      Future.delayed(const Duration(seconds: 3), () {
+                        if (mounted) {
+                          Navigator.pop(dialogContext);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'WiFi credentials sent! Valve will restart and connect to your home WiFi.',
+                              ),
+                              backgroundColor: Colors.green,
+                              duration: Duration(seconds: 5),
+                            ),
+                          );
+                        }
+                      });
+                    },
+              icon: isSending
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(Icons.send),
+              label: Text(isSending ? 'Sending...' : 'Save & Connect'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1639,36 +2170,130 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
   void _showEditNameDialog() {
     final controller = TextEditingController(
         text: _device['vwv_name'] ?? _device['device_name']);
+    bool isSaving = false;
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Edit Device Name'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            labelText: 'Device Name',
-            border: OutlineInputBorder(),
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('Edit Device Name'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            decoration: const InputDecoration(
+              labelText: 'Device Name',
+              border: OutlineInputBorder(),
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: isSaving ? null : () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: isSaving
+                  ? null
+                  : () async {
+                      final newName = controller.text.trim();
+                      if (newName.isEmpty) return;
+
+                      setDialogState(() => isSaving = true);
+
+                      // Send to server via REST API
+                      final success = await _saveDeviceName(newName);
+
+                      if (success && mounted) {
+                        setState(() {
+                          _device['vwv_name'] = newName;
+                          _device['device_name'] = newName;
+                        });
+                        Navigator.pop(dialogContext);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Device name updated!'),
+                            backgroundColor: Colors.green,
+                          ),
+                        );
+                      } else {
+                        setDialogState(() => isSaving = false);
+                      }
+                    },
+              child: isSaving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Text('Save'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              setState(() {
-                _device['vwv_name'] = controller.text;
-                _device['device_name'] = controller.text;
-              });
-              Navigator.pop(context);
-              // TODO: Save name to backend
-            },
-            child: const Text('Save'),
-          ),
-        ],
       ),
     );
+  }
+
+  /// Save device name to backend via control_device.php
+  /// Architecture Doc Page 8: set_valve_basic with valve_data.name
+  Future<bool> _saveDeviceName(String newName) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('access_token');
+
+    try {
+      final requestBody = {
+        'event': 'set_valve_basic',
+        'timestamp': DateTime.now().toUtc().toIso8601String(),
+        'device_id': _device['id'],
+        'set_controller': {
+          'schedule': _isScheduleMode,
+          'sensor': false,
+        },
+        'valve_data': {
+          'name': newName,
+          'set_angle': true,
+          'angle': _getActualPosition(),
+        },
+        'ota_update': false,
+      };
+
+      print("📤 Name Update: ${jsonEncode(requestBody)}");
+
+      final response = await http.post(
+        Uri.parse('https://vortexlabsofficial.com/vortex_app/control_device.php'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(requestBody),
+      );
+
+      print("Name Update Response: ${response.body}");
+
+      final result = jsonDecode(response.body);
+      if (result['success'] == true) {
+        return true;
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error: ${result['message']}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return false;
+      }
+    } catch (e) {
+      print("Name Update Error: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Connection failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return false;
+    }
   }
 }

@@ -99,9 +99,9 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
   /// Authenticate with ESP32 using passkey
   /// ESP32 validates passkey before accepting any commands
   void _authenticateWithEsp() {
-    // TODO: Get passkey from app config or user input
-    // For now using empty string - update when passkey is configured
-    _espService.authenticate(passkey: '');
+    final user = AuthService.currentUser;
+    final userId = user?['id']?.toString() ?? 'app_user';
+    _espService.authenticate(passkey: '12345', userId: userId);
   }
 
   /// Request valve data from ESP32
@@ -112,6 +112,7 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
     _espService.requestValveData(
       userId: userId,
       deviceId: deviceId,
+      deviceName: widget.deviceData?['vwv_name'] ?? 'Valve',
     );
   }
 

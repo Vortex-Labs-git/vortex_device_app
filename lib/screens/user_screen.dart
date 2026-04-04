@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../utils/constants.dart';
 import '../services/auth_service.dart';
 import 'login_screen.dart';
+import 'main_screen.dart';
 
 class UserScreen extends StatefulWidget {
   const UserScreen({super.key});
@@ -17,7 +18,12 @@ class _UserScreenState extends State<UserScreen> {
     if (!AuthService.isLoggedIn) {
       return LoginScreen(
         onLoginSuccess: () {
-          setState(() {}); // Refresh to show profile
+          // Replace entire navigation stack with fresh MainScreen
+          // This ensures HomeScreen re-initializes with WebSocket connected
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const MainScreen()),
+            (route) => false,
+          );
         },
       );
     }
@@ -105,37 +111,6 @@ class _UserScreenState extends State<UserScreen> {
 
           const SizedBox(height: 16),
 
-          // Settings Card
-          Card(
-            child: Column(
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.bluetooth, color: AppColors.primary),
-                  title: const Text('Bluetooth'),
-                  subtitle: const Text('Manage connections'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Bluetooth settings coming soon...')),
-                    );
-                  },
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.notifications, color: AppColors.primary),
-                  title: const Text('Notifications'),
-                  subtitle: const Text('Configure alerts'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Notification settings coming soon...')),
-                    );
-                  },
-                ),
-              ],
-            ),
-          ),
-
           const SizedBox(height: 24),
 
           // Logout Button
@@ -192,10 +167,17 @@ class _UserScreenState extends State<UserScreen> {
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              AuthService.logout();
-              setState(() {}); // Refresh to show login
+            onPressed: () async {
+              Navigator.pop(context); // Close dialog
+              await AuthService.logout(); // Wait for logout to complete
+              if (mounted) {
+                // Replace entire navigation stack with fresh MainScreen
+                // This ensures all pages (Home, User, etc.) rebuild with logged-out state
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (_) => const MainScreen()),
+                  (route) => false,
+                );
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,

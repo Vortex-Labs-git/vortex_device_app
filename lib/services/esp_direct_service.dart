@@ -203,17 +203,13 @@ class EspDirectService {
   /// This MUST be called first after connecting.
   /// ESP32 will not process any other events until authenticated.
   /// 
-  /// ESP32 C code (websocket_state_fn.c → process_message):
-  ///   - Checks event == "request_device_info"
-  ///   - Validates passkey against CONFIG_WS_PASSKEY_VALUE
-  ///   - If valid: sets connection_authorized = true, sends device_info
-  ///   - If invalid: connection remains unauthorized
-  /// 
-  /// Sends:
+  /// Real ESP32 expects (confirmed via Postman):
   /// ```json
   /// {
   ///   "event": "request_device_info",
-  ///   "passkey": "YOUR_PASSKEY"
+  ///   "timestamp": "2025-01-15T10:30:00Z",
+  ///   "user_id": "user_id",
+  ///   "passkey": "12345"
   /// }
   /// ```
   /// 
@@ -221,13 +217,15 @@ class EspDirectService {
   /// ```json
   /// {
   ///   "event": "device_info",
-  ///   "timestamp": "YYYY-MM-DD HH:MM:SS",
-  ///   "device_id": "DEVICE_ID"
+  ///   "timestamp": "1970-01-01T00:13:09",
+  ///   "device_id": "VA202601001"
   /// }
   /// ```
-  void authenticate({required String passkey}) {
+  void authenticate({required String passkey, String? userId}) {
     _send({
       'event': 'request_device_info',
+      'timestamp': DateTime.now().toUtc().toIso8601String(),
+      'user_id': userId ?? 'app_user',
       'passkey': passkey,
     });
   }
@@ -238,24 +236,22 @@ class EspDirectService {
 
   /// Request full valve state from ESP32
   /// 
-  /// ESP32 C code (websocket_state_fn.c → offline_data):
-  ///   - Checks event == "device_basic_info"
-  ///   - Reads data.device_id and compares with DEVICE_ID
-  ///   - If match: calls send_device_data() → sends valve_data event
-  /// 
-  /// Sends:
+  /// Architecture Doc Page 11:
   /// ```json
   /// {
   ///   "event": "device_basic_info",
+  ///   "timestamp": "2025-01-15T10:30:00Z",
   ///   "data": {
   ///     "user_id": "user001",
-  ///     "device_id": "dev0016"
+  ///     "device_id": "dev0016",
+  ///     "device_name": "home valve"
   ///   }
   /// }
   /// ```
   void requestValveData({
     required String userId,
     required String deviceId,
+    String? deviceName,
   }) {
     if (!_isAuthenticated) {
       print('⚠️ ESP32: Not authenticated. Call authenticate() first.');
@@ -263,9 +259,11 @@ class EspDirectService {
     }
     _send({
       'event': 'device_basic_info',
+      'timestamp': DateTime.now().toUtc().toIso8601String(),
       'data': {
         'user_id': userId,
         'device_id': deviceId,
+        'device_name': deviceName ?? 'Valve',
       },
     });
   }
@@ -276,47 +274,47 @@ class EspDirectService {
 
   /// Set valve angle (manual control)
   /// 
-  /// ESP32 C code (websocket_state_fn.c → offline_data):
-  ///   - Checks event == "set_valve_basic"
-  ///   - Reads valve_data.set_angle (bool) and valve_data.angle (number)
-  ///   - Sets schedule_control = false, sensor_control = false
-  ///   - Updates serverData via serverMutex
-  /// 
-  /// Note: ESP32 only reads the "valve_data" object.
-  ///       It does NOT read device_id, set_controller, timestamp, or ota_update.
-  /// 
-  /// Sends:
+  /// Architecture Doc Page 12 - exact format ESP32 expects:
   /// ```json
   /// {
   ///   "event": "set_valve_basic",
-  ///   "valve_data": {
-  ///     "set_angle": true,
-  ///     "angle": 45
-  ///   }
+  ///   "timestamp": "2025-01-15T10:30:00Z",
+  ///   "device_id": "dev0016",
+  ///   "set_controller": { "schedule": false, "sensor": false },
+  ///   "valve_data": { "name": "MainValve01", "set_angle": true, "angle": 45 },
+  ///   "ota_update": false
   /// }
   /// ```
-  void setValveAngle({required int angle}) {
+  void setValveAngle({required int angle, String? deviceName}) {
     if (!_isAuthenticated) {
       print('⚠️ ESP32: Not authenticated. Call authenticate() first.');
       return;
     }
     _send({
       'event': 'set_valve_basic',
+      'timestamp': DateTime.now().toUtc().toIso8601String(),
+      'device_id': _connectedDeviceId ?? '',
+      'set_controller': {
+        'schedule': false,
+        'sensor': false,
+      },
       'valve_data': {
+        'name': deviceName ?? 'Valve',
         'set_angle': true,
         'angle': angle.clamp(0, 90),
       },
+      'ota_update': false,
     });
   }
 
   /// Open valve fully (angle = 90)
-  void openValve() {
-    setValveAngle(angle: 90);
+  void openValve({String? deviceName}) {
+    setValveAngle(angle: 90, deviceName: deviceName);
   }
 
   /// Close valve fully (angle = 0)
-  void closeValve() {
-    setValveAngle(angle: 0);
+  void closeValve({String? deviceName}) {
+    setValveAngle(angle: 0, deviceName: deviceName);
   }
 
   // ============================================================
@@ -325,26 +323,21 @@ class EspDirectService {
 
   /// Set WiFi credentials for ESP32 STA mode
   /// 
-  /// ESP32 C code (websocket_state_fn.c → offline_data):
-  ///   - Checks event == "set_valve_wifi"
-  ///   - Reads wifi_data.ssid and wifi_data.password
-  ///   - Compares with current credentials
-  ///   - If changed: saves to NVS via wifi_storage_save() and calls esp_restart()
-  ///   - If unchanged: no action
-  /// 
-  /// WARNING: ESP32 will restart after saving new credentials!
-  ///          The WebSocket connection will be lost.
-  /// 
-  /// Sends:
+  /// Architecture Doc Page 13:
   /// ```json
   /// {
   ///   "event": "set_valve_wifi",
+  ///   "timestamp": "2025-01-15T10:30:00Z",
+  ///   "device_id": "dev0016",
   ///   "wifi_data": {
-  ///     "ssid": "YourSSID",
-  ///     "password": "YourPassword"
+  ///     "ssid": "myNetWork",
+  ///     "password": "1234"
   ///   }
   /// }
   /// ```
+  /// 
+  /// WARNING: ESP32 will restart after saving new credentials!
+  ///          The WebSocket connection will be lost.
   void setWifiCredentials({
     required String ssid,
     required String password,
@@ -355,6 +348,8 @@ class EspDirectService {
     }
     _send({
       'event': 'set_valve_wifi',
+      'timestamp': DateTime.now().toUtc().toIso8601String(),
+      'device_id': _connectedDeviceId ?? '',
       'wifi_data': {
         'ssid': ssid,
         'password': password,

@@ -272,22 +272,12 @@ class WebSocketService {
 
       switch (event) {
         // ---- Device List Update ----
+    
         case 'devices_data':
           final List<dynamic> deviceList = data['device_list'] ?? [];
           print("📊 WS: Received ${deviceList.length} devices");
-
-          // Save server timestamp for online/offline comparison
-          // Server sends: "timestamp":"2026-03-21T16:08:31+00:00" (UTC)
-          final serverTs = data['timestamp']?.toString();
-          if (serverTs != null) {
-            try {
-              lastServerTimestamp = DateTime.parse(serverTs);
-            } catch (_) {}
-          }
-
           _deviceListController.add(deviceList);
           break;
-
         // ---- Device Detail Update ----
         case 'device_detail':
           final Map<String, dynamic> deviceData = data['data'] ?? {};

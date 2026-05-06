@@ -8,6 +8,7 @@ import '../services/websocket_service.dart';
 import '../services/esp_direct_service.dart';
 import 'manual_control_screen.dart';
 import 'wifi_setup_screen.dart';
+import 'motor_calibration_screen.dart';
 
 class DeviceDetailScreen extends StatefulWidget {
   final Map<String, dynamic> deviceData;
@@ -1060,7 +1061,15 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
             if (!_isScheduleMode && _controlMode == 'schedule') _buildScheduleCard(),
             if (!_isScheduleMode && _controlMode == 'sensor') _buildSensorCard(),
             const SizedBox(height: 16),
-            // WiFi button removed
+            // ── Direct-mode-only action buttons ──
+            // Shown only when the user is connected straight to the
+            // ESP32 over its AP (Vortex_VA<deviceId>). In server mode
+            // these actions don't apply.
+            if (_isDirectMode) ...[
+              _buildChangeWifiButton(),
+              const SizedBox(height: 12),
+              _buildMotorCalibrationButton(),
+            ],
           ],
         ),
       ),
@@ -2021,6 +2030,71 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
           ),
         ),
         child: const Text('WiFi Only Direct'),
+      ),
+    );
+  }
+
+  // ============================================================
+  // CHANGE WIFI CONNECTION BUTTON (direct mode bottom of screen)
+  // ============================================================
+  /// Shown at the bottom of the screen when in direct mode.
+  /// Opens the same dialog that lets the user enter home WiFi credentials
+  /// and pushes them to the ESP32 via set_valve_wifi.
+  Widget _buildChangeWifiButton() {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: _showWifiCredentialsDialog,
+        icon: const Icon(Icons.wifi),
+        label: const Text('Change WiFi connection'),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color(0xFF3F51B5),
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          textStyle: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // MOTOR CALIBRATION BUTTON (direct mode, sits under Change WiFi)
+  // ============================================================
+  /// Opens the MotorCalibrationScreen, where the user can rotate
+  /// the motor and set close/open encoder limits on the ESP32.
+  Widget _buildMotorCalibrationButton() {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) =>
+                  MotorCalibrationScreen(deviceData: _device),
+            ),
+          );
+        },
+        icon: const Icon(Icons.tune),
+        label: const Text('Motor Calibration'),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color(0xFF3F51B5),
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          textStyle: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
       ),
     );
   }

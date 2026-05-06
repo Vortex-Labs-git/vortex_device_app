@@ -33,12 +33,14 @@ class EspDirectService {
   final _connectionStateController = StreamController<bool>.broadcast();
   final _deviceInfoController = StreamController<Map<String, dynamic>>.broadcast();
   final _valveDataController = StreamController<Map<String, dynamic>>.broadcast();
+  final _motorCalibrationController = StreamController<Map<String, dynamic>>.broadcast();
   final _errorController = StreamController<Map<String, dynamic>>.broadcast();
   
   // Public streams
   Stream<bool> get connectionStream => _connectionStateController.stream;
   Stream<Map<String, dynamic>> get deviceInfoStream => _deviceInfoController.stream;
   Stream<Map<String, dynamic>> get valveDataStream => _valveDataController.stream;
+  Stream<Map<String, dynamic>> get motorCalibrationStream => _motorCalibrationController.stream;
   Stream<Map<String, dynamic>> get errorStream => _errorController.stream;
   
   // Getters
@@ -166,6 +168,18 @@ class EspDirectService {
         // See: websocket_state_fn.c → send_device_data()
         case 'valve_data':
           _valveDataController.add(Map<String, dynamic>.from(data));
+          break;
+        
+        // ── Motor calibration data ──
+        // ESP32 sends this in response to:
+        //   - get_motor_calibration request (initial load)
+        //   - set_motor_rotation clockwise/anticlockwise (real-time encoder updates)
+        // Format: {"event":"get_motor_calibration","timestamp":"...","device_id":"...",
+        //          "encoder_data":{"value":2500,"Close_limit":2000,"Open_limit":3500}}
+        // The app screen decides whether to use Close_limit/Open_limit (only on first reply)
+        // or just the real-time `value` (on subsequent replies).
+        case 'get_motor_calibration':
+          _motorCalibrationController.add(Map<String, dynamic>.from(data));
           break;
         
         // ── Error broadcast ──
@@ -318,6 +332,108 @@ class EspDirectService {
   }
 
   // ============================================================
+  // MOTOR CALIBRATION
+  // ============================================================
+
+  /// Request motor calibration data from ESP32 (initial load)
+  /// 
+  /// Called once when MotorCalibrationScreen opens.
+  /// ESP32 responds with `get_motor_calibration` event containing
+  /// encoder_data { value, Close_limit, Open_limit }.
+  /// 
+  /// edit.pdf - Motor Calibration process:
+  /// ```json
+  /// {
+  ///   "event": "get_motor_calibration",
+  ///   "timestamp": "2025-01-15T10:30:00Z",
+  ///   "device_id": "VA202604001"
+  /// }
+  /// ```
+  void requestMotorCalibration() {
+    if (!_isAuthenticated) {
+      print('⚠️ ESP32: Not authenticated. Call authenticate() first.');
+      return;
+    }
+    _send({
+      'event': 'get_motor_calibration',
+      'timestamp': DateTime.now().toUtc().toIso8601String(),
+      'device_id': _connectedDeviceId ?? '',
+    });
+  }
+
+  /// Turn motor clockwise or anti-clockwise (called per-tap)
+  /// 
+  /// User taps "Turn motor Clockwise" or "Turn motor Anticlockwise"
+  /// continuously. Each tap sends one rotation command. ESP32 replies
+  /// with a `get_motor_calibration` message containing the updated
+  /// real-time encoder value.
+  /// 
+  /// edit.pdf - Motor Calibration process:
+  /// ```json
+  /// {
+  ///   "event": "set_motor_rotation",
+  ///   "timestamp": "2025-01-15T10:30:00Z",
+  ///   "device_id": "VA202604001",
+  ///   "set_motor": {
+  ///     "turn_clkwise": true,
+  ///     "Turn_anticlkwise": false
+  ///   }
+  /// }
+  /// ```
+  void setMotorRotation({required bool clockwise}) {
+    if (!_isAuthenticated) {
+      print('⚠️ ESP32: Not authenticated. Call authenticate() first.');
+      return;
+    }
+    _send({
+      'event': 'set_motor_rotation',
+      'timestamp': DateTime.now().toUtc().toIso8601String(),
+      'device_id': _connectedDeviceId ?? '',
+      'set_motor': {
+        'turn_clkwise': clockwise,
+        'Turn_anticlkwise': !clockwise,
+      },
+    });
+  }
+
+  /// Save calibration limits to ESP32
+  /// 
+  /// Called when user taps "save" on MotorCalibrationScreen, after
+  /// they have set close value / open value. Sends only the limits
+  /// (no `value` field — that's sensor data, not user-set).
+  /// 
+  /// edit.pdf - Motor Calibration process:
+  /// ```json
+  /// {
+  ///   "event": "set_motor_calibration",
+  ///   "timestamp": "2025-01-15T10:30:00Z",
+  ///   "device_id": "VA202604001",
+  ///   "encoder_data": {
+  ///     "Close_limit": 2000,
+  ///     "Open_limit": 3500
+  ///   }
+  /// }
+  /// ```
+  void setMotorCalibration({
+    required int closeLimit,
+    required int openLimit,
+  }) {
+    if (!_isAuthenticated) {
+      print('⚠️ ESP32: Not authenticated. Call authenticate() first.');
+      return;
+    }
+    _send({
+      'event': 'set_motor_calibration',
+      'timestamp': DateTime.now().toUtc().toIso8601String(),
+      'device_id': _connectedDeviceId ?? '',
+      'encoder_data': {
+        'Close_limit': closeLimit,
+        'Open_limit': openLimit,
+      },
+    });
+  }
+
+  // ============================================================
   // WIFI CONFIGURATION
   // ============================================================
 
@@ -400,6 +516,7 @@ class EspDirectService {
     _connectionStateController.close();
     _deviceInfoController.close();
     _valveDataController.close();
+    _motorCalibrationController.close();
     _errorController.close();
   }
 }

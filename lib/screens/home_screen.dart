@@ -6,7 +6,7 @@ import '../services/auth_service.dart';
 import '../services/websocket_service.dart';
 import '../services/local_storage_service.dart';
 import '../services/esp_direct_service.dart';
-import 'device_detail_screen.dart';
+import 'device_detail/device_detail_screen.dart';
 import 'wifi_setup_screen.dart';
 
 class HomeScreen extends StatefulWidget {

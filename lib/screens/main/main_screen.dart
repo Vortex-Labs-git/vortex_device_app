@@ -1,0 +1,125 @@
+import 'package:flutter/material.dart';
+import '../../utils/constants.dart';
+
+// Tab screens
+import '../home/home_screen.dart';
+import '../user_screen.dart';
+import '../about_screen.dart';
+import '../manual_screen.dart';
+
+// Local widgets
+import 'widgets/main_app_bar.dart';
+import 'widgets/main_bottom_nav.dart';
+import 'widgets/add_device_fab.dart';
+
+// =============================================================================
+// MAIN SCREEN
+// =============================================================================
+// Top-level shell holding the 4 tabs (Home / User / Manual / About) inside an
+// IndexedStack. Owns the current tab index, the FAB's add-device dialog, and
+// the navigation between tabs. Each tab screen below the IndexedStack manages
+// its own state independently.
+// =============================================================================
+
+class MainScreen extends StatefulWidget {
+  const MainScreen({super.key});
+
+  @override
+  State<MainScreen> createState() => _MainScreenState();
+}
+
+class _MainScreenState extends State<MainScreen> {
+  // ---------------------------------------------------------------------------
+  // SECTION 1: STATE VARIABLES
+  // ---------------------------------------------------------------------------
+
+  // -- Current tab index (0=Home, 1=User, 2=Manual, 3=About) --
+  int _currentIndex = 0;
+
+  // -- Tab screens kept alive by IndexedStack --
+  final List<Widget> _pages = [
+    const HomeScreen(),
+    const UserScreen(),
+    const ManualScreen(),
+    const AboutScreen(),
+  ];
+
+  // ---------------------------------------------------------------------------
+  // SECTION 2: ADD DEVICE DIALOG
+  // ---------------------------------------------------------------------------
+  // Triggered by the FAB on the Home tab. Currently a placeholder — captures
+  // a name and shows a snackbar. Real backend hookup is still pending.
+
+  void _showAddDeviceDialog(BuildContext context) {
+    final nameController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text(AppStrings.addDevice),
+        content: TextField(
+          controller: nameController,
+          decoration: const InputDecoration(
+            labelText: 'Device Name',
+            hintText: 'e.g., Main Valve',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Device "${nameController.text}" added!'),
+                ),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // SECTION 3: BUILD METHOD
+  // ---------------------------------------------------------------------------
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      // 3.1  Top app bar (person icon jumps to the User tab)
+      appBar: MainAppBar(
+        onPersonPressed: () => setState(() => _currentIndex = 1),
+      ),
+
+      // 3.2  Tab content (IndexedStack keeps all tabs alive)
+      body: IndexedStack(
+        index: _currentIndex,
+        children: _pages,
+      ),
+
+      // 3.3  Add device FAB — only on Home tab
+      floatingActionButton: _currentIndex == 0
+          ? AddDeviceFab(
+              onPressed: () => _showAddDeviceDialog(context),
+            )
+          : null,
+
+      // 3.4  Bottom navigation
+      bottomNavigationBar: MainBottomNav(
+        currentIndex: _currentIndex,
+        onTap: (index) => setState(() => _currentIndex = index),
+      ),
+    );
+  }
+}

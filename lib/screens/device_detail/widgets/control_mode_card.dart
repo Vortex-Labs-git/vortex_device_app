@@ -1,15 +1,24 @@
 import 'package:flutter/material.dart';
 
+// =============================================================================
+// CONTROL MODE CARD
+// =============================================================================
+// Three-button selector for: manual / schedule / sensor.
+// In direct mode, schedule and sensor are locked (greyed out + lock icon).
+// =============================================================================
+
 class ControlModeCard extends StatelessWidget {
-  final String controlMode;
+  final String controlMode; // 'manual' | 'schedule' | 'sensor'
   final bool isDirectMode;
   final ValueChanged<String> onModeSelected;
+  final VoidCallback onDisabledTap; // Called when user taps a locked option
 
   const ControlModeCard({
     super.key,
     required this.controlMode,
     required this.isDirectMode,
     required this.onModeSelected,
+    required this.onDisabledTap,
   });
 
   @override
@@ -20,17 +29,48 @@ class ControlModeCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ─────────────────────────────────────────────────────────────
+            // Header
+            // ─────────────────────────────────────────────────────────────
             const Text(
               'Control by',
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
+
             const SizedBox(height: 16),
+
+            // ─────────────────────────────────────────────────────────────
+            // Three mode buttons
+            // ─────────────────────────────────────────────────────────────
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                _buildModeButton(context, 'manual', Icons.pan_tool, 'manual'),
-                _buildModeButton(context, 'schedule', Icons.schedule, 'schedule'),
-                _buildModeButton(context, 'sensor', Icons.sensors, 'sensor'),
+                // Manual button
+                _buildButton(
+                  mode: 'manual',
+                  icon: Icons.pan_tool,
+                  label: 'manual',
+                  isSelected: controlMode == 'manual',
+                  isDisabled: false,
+                ),
+
+                // Schedule button (locked in direct mode)
+                _buildButton(
+                  mode: 'schedule',
+                  icon: Icons.schedule,
+                  label: 'schedule',
+                  isSelected: controlMode == 'schedule',
+                  isDisabled: isDirectMode,
+                ),
+
+                // Sensor button (locked in direct mode)
+                _buildButton(
+                  mode: 'sensor',
+                  icon: Icons.sensors,
+                  label: 'sensor',
+                  isSelected: controlMode == 'sensor',
+                  isDisabled: isDirectMode,
+                ),
               ],
             ),
           ],
@@ -39,21 +79,19 @@ class ControlModeCard extends StatelessWidget {
     );
   }
 
-  Widget _buildModeButton(BuildContext context, String mode, IconData icon, String label) {
-    bool isSelected = controlMode == mode;
-    bool isDisabled = isDirectMode && (mode == 'schedule' || mode == 'sensor');
-
+  // ───────────────────────────────────────────────────────────────────────
+  // Single mode button (kept inline as a helper inside this widget — not a
+  // separate file because it's only used here and has no business logic)
+  // ───────────────────────────────────────────────────────────────────────
+  Widget _buildButton({
+    required String mode,
+    required IconData icon,
+    required String label,
+    required bool isSelected,
+    required bool isDisabled,
+  }) {
     return GestureDetector(
-      onTap: isDisabled
-          ? () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Schedule & Sensor require server connection'),
-                  duration: Duration(seconds: 2),
-                ),
-              );
-            }
-          : () => onModeSelected(mode),
+      onTap: isDisabled ? onDisabledTap : () => onModeSelected(mode),
       child: Opacity(
         opacity: isDisabled ? 0.35 : 1.0,
         child: Container(

@@ -1,15 +1,23 @@
 import 'package:flutter/material.dart';
 
+// =============================================================================
+// MODE TOGGLE CARD
+// =============================================================================
+// Switch between Manual and Schedule mode. Sends the new value to the parent
+// via [onModeChanged]. Shows a spinner while [isSwitching] is true (parent is
+// waiting for the server to confirm the mode change).
+// =============================================================================
+
 class ModeToggleCard extends StatelessWidget {
   final bool isScheduleMode;
-  final bool isSwitchingMode;
-  final ValueChanged<bool> onToggle;
+  final bool isSwitching;
+  final ValueChanged<bool> onModeChanged;
 
   const ModeToggleCard({
     super.key,
     required this.isScheduleMode,
-    required this.isSwitchingMode,
-    required this.onToggle,
+    required this.isSwitching,
+    required this.onModeChanged,
   });
 
   @override
@@ -20,6 +28,9 @@ class ModeToggleCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ─────────────────────────────────────────────────────────────
+            // Header
+            // ─────────────────────────────────────────────────────────────
             Text(
               'Control method',
               style: TextStyle(
@@ -28,9 +39,15 @@ class ModeToggleCard extends StatelessWidget {
                 color: Colors.grey[800],
               ),
             ),
+
             const SizedBox(height: 12),
+
+            // ─────────────────────────────────────────────────────────────
+            // Toggle row: icon | labels | switch
+            // ─────────────────────────────────────────────────────────────
             Row(
               children: [
+                // Icon (changes color/glyph based on current mode)
                 Container(
                   width: 40,
                   height: 40,
@@ -42,11 +59,16 @@ class ModeToggleCard extends StatelessWidget {
                   ),
                   child: Icon(
                     isScheduleMode ? Icons.schedule : Icons.pan_tool,
-                    color: isScheduleMode ? Colors.orange : const Color(0xFF3F51B5),
+                    color: isScheduleMode
+                        ? Colors.orange
+                        : const Color(0xFF3F51B5),
                     size: 22,
                   ),
                 ),
+
                 const SizedBox(width: 12),
+
+                // Labels: "Manual / Schedule" + description
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -56,21 +78,32 @@ class ModeToggleCard extends StatelessWidget {
                           Text(
                             'Manual',
                             style: TextStyle(
-                              fontWeight: !isScheduleMode ? FontWeight.bold : FontWeight.normal,
+                              fontWeight: !isScheduleMode
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
                               fontSize: 14,
-                              color: !isScheduleMode ? const Color(0xFF3F51B5) : Colors.grey,
+                              color: !isScheduleMode
+                                  ? const Color(0xFF3F51B5)
+                                  : Colors.grey,
                             ),
                           ),
                           Text(
                             '  /  ',
-                            style: TextStyle(fontSize: 14, color: Colors.grey[400]),
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[400],
+                            ),
                           ),
                           Text(
                             'Schedule',
                             style: TextStyle(
-                              fontWeight: isScheduleMode ? FontWeight.bold : FontWeight.normal,
+                              fontWeight: isScheduleMode
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
                               fontSize: 14,
-                              color: isScheduleMode ? Colors.orange : Colors.grey,
+                              color: isScheduleMode
+                                  ? Colors.orange
+                                  : Colors.grey,
                             ),
                           ),
                         ],
@@ -80,12 +113,17 @@ class ModeToggleCard extends StatelessWidget {
                         isScheduleMode
                             ? 'Valve follows the schedule automatically'
                             : 'You control the valve position',
-                        style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey[500],
+                        ),
                       ),
                     ],
                   ),
                 ),
-                if (isSwitchingMode)
+
+                // Switch (or spinner while server is updating)
+                if (isSwitching)
                   const SizedBox(
                     width: 24,
                     height: 24,
@@ -96,8 +134,9 @@ class ModeToggleCard extends StatelessWidget {
                     value: isScheduleMode,
                     activeColor: Colors.orange,
                     inactiveThumbColor: const Color(0xFF3F51B5),
-                    inactiveTrackColor: const Color(0xFF3F51B5).withOpacity(0.3),
-                    onChanged: onToggle,
+                    inactiveTrackColor:
+                        const Color(0xFF3F51B5).withOpacity(0.3),
+                    onChanged: onModeChanged,
                   ),
               ],
             ),

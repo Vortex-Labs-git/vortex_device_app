@@ -1,24 +1,24 @@
 import 'package:flutter/material.dart';
-import '../../motor_calibration_screen.dart';
+
+// =============================================================================
+// MOTOR CALIBRATION BUTTON
+// =============================================================================
+// Direct-mode-only button shown under the Change WiFi button. Tapping it
+// opens MotorCalibrationScreen — that navigation is handled in the parent
+// screen via [onPressed].
+// =============================================================================
 
 class MotorCalibrationButton extends StatelessWidget {
-  final Map<String, dynamic> deviceData;
+  final VoidCallback onPressed;
 
-  const MotorCalibrationButton({super.key, required this.deviceData});
+  const MotorCalibrationButton({super.key, required this.onPressed});
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton.icon(
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => MotorCalibrationScreen(deviceData: deviceData),
-            ),
-          );
-        },
+        onPressed: onPressed,
         icon: const Icon(Icons.tune),
         label: const Text('Motor Calibration'),
         style: ElevatedButton.styleFrom(

@@ -1,21 +1,29 @@
 import 'package:flutter/material.dart';
 
+// =============================================================================
+// SCHEDULE CARD
+// =============================================================================
+// Shows the schedule table (Day | Open | Close | delete), an "Add Schedule"
+// button, and a "Save Schedule" button. All add/edit/delete dialogs and the
+// REST save call live in the parent screen and are invoked through callbacks.
+// =============================================================================
+
 class ScheduleCard extends StatelessWidget {
   final List<Map<String, dynamic>> schedules;
   final bool isSavingSchedule;
-  final VoidCallback onAddSchedule;
-  final VoidCallback onSaveSchedule;
-  final void Function(int) onEditSchedule;
-  final void Function(int) onDeleteSchedule;
+  final VoidCallback onAddPressed;
+  final ValueChanged<int> onRowTapped; // Tap a row to edit it
+  final ValueChanged<int> onRowDeleted;
+  final VoidCallback onSavePressed;
 
   const ScheduleCard({
     super.key,
     required this.schedules,
     required this.isSavingSchedule,
-    required this.onAddSchedule,
-    required this.onSaveSchedule,
-    required this.onEditSchedule,
-    required this.onDeleteSchedule,
+    required this.onAddPressed,
+    required this.onRowTapped,
+    required this.onRowDeleted,
+    required this.onSavePressed,
   });
 
   @override
@@ -26,6 +34,9 @@ class ScheduleCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // =========================================================
+            // SECTION 1: HEADER ROW (title + entry count)
+            // =========================================================
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -39,9 +50,12 @@ class ScheduleCard extends StatelessWidget {
                 ),
               ],
             ),
+
             const SizedBox(height: 16),
 
-            // Table Header
+            // =========================================================
+            // SECTION 2: TABLE HEADER (Day | Open | Close | _)
+            // =========================================================
             Container(
               padding: const EdgeInsets.symmetric(vertical: 8),
               decoration: BoxDecoration(
@@ -51,26 +65,40 @@ class ScheduleCard extends StatelessWidget {
               child: const Row(
                 children: [
                   Expanded(
-                      flex: 3,
-                      child: Center(
-                          child: Text('Day',
-                              style: TextStyle(fontWeight: FontWeight.bold)))),
+                    flex: 3,
+                    child: Center(
+                      child: Text(
+                        'Day',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
                   Expanded(
-                      flex: 2,
-                      child: Center(
-                          child: Text('Open',
-                              style: TextStyle(fontWeight: FontWeight.bold)))),
+                    flex: 2,
+                    child: Center(
+                      child: Text(
+                        'Open',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
                   Expanded(
-                      flex: 2,
-                      child: Center(
-                          child: Text('Close',
-                              style: TextStyle(fontWeight: FontWeight.bold)))),
-                  SizedBox(width: 40), // Space for delete button
+                    flex: 2,
+                    child: Center(
+                      child: Text(
+                        'Close',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+                  SizedBox(width: 40), // Space for delete button column
                 ],
               ),
             ),
 
-            // Schedule Rows
+            // =========================================================
+            // SECTION 3: SCHEDULE ROWS (or empty placeholder)
+            // =========================================================
             if (schedules.isEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 24),
@@ -86,20 +114,22 @@ class ScheduleCard extends StatelessWidget {
               ...schedules.asMap().entries.map((entry) {
                 final i = entry.key;
                 final s = entry.value;
-                return _buildScheduleRowInteractive(
-                  i,
-                  s['day'] ?? '',
-                  s['open'] ?? '',
-                  s['close'] ?? '',
+                return _buildRow(
+                  index: i,
+                  day: s['day'] ?? '',
+                  openTime: s['open'] ?? '',
+                  closeTime: s['close'] ?? '',
                 );
               }),
 
             const SizedBox(height: 12),
 
-            // Add Schedule Button
+            // =========================================================
+            // SECTION 4: ADD SCHEDULE BUTTON
+            // =========================================================
             Center(
               child: TextButton.icon(
-                onPressed: onAddSchedule,
+                onPressed: onAddPressed,
                 icon: const Icon(Icons.add_circle_outline),
                 label: const Text('Add Schedule'),
                 style: TextButton.styleFrom(
@@ -110,11 +140,13 @@ class ScheduleCard extends StatelessWidget {
 
             const SizedBox(height: 12),
 
-            // Save Button
+            // =========================================================
+            // SECTION 5: SAVE SCHEDULE BUTTON
+            // =========================================================
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: isSavingSchedule ? null : onSaveSchedule,
+                onPressed: isSavingSchedule ? null : onSavePressed,
                 icon: isSavingSchedule
                     ? const SizedBox(
                         width: 18,
@@ -129,7 +161,8 @@ class ScheduleCard extends StatelessWidget {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF3F51B5),
                   foregroundColor: Colors.white,
-                  disabledBackgroundColor: const Color(0xFF3F51B5).withOpacity(0.6),
+                  disabledBackgroundColor:
+                      const Color(0xFF3F51B5).withOpacity(0.6),
                   padding: const EdgeInsets.symmetric(vertical: 12),
                 ),
               ),
@@ -140,9 +173,19 @@ class ScheduleCard extends StatelessWidget {
     );
   }
 
-  Widget _buildScheduleRowInteractive(int index, String day, String openTime, String closeTime) {
+  // ───────────────────────────────────────────────────────────────────────
+  // Helper: single schedule row (Day | Open | Close | delete-icon)
+  // Tapping the row body calls onRowTapped (edit). The delete icon calls
+  // onRowDeleted independently.
+  // ───────────────────────────────────────────────────────────────────────
+  Widget _buildRow({
+    required int index,
+    required String day,
+    required String openTime,
+    required String closeTime,
+  }) {
     return InkWell(
-      onTap: () => onEditSchedule(index),
+      onTap: () => onRowTapped(index),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 10),
         decoration: BoxDecoration(
@@ -166,9 +209,10 @@ class ScheduleCard extends StatelessWidget {
                 child: Text(
                   openTime,
                   style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.green[700]),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.green[700],
+                  ),
                 ),
               ),
             ),
@@ -178,9 +222,10 @@ class ScheduleCard extends StatelessWidget {
                 child: Text(
                   closeTime,
                   style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.red[700]),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.red[700],
+                  ),
                 ),
               ),
             ),
@@ -189,7 +234,7 @@ class ScheduleCard extends StatelessWidget {
               child: IconButton(
                 icon: const Icon(Icons.delete_outline, size: 18),
                 color: Colors.red[300],
-                onPressed: () => onDeleteSchedule(index),
+                onPressed: () => onRowDeleted(index),
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
               ),

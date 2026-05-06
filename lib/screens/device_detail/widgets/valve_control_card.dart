@@ -1,40 +1,58 @@
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
 
+// =============================================================================
+// VALVE CONTROL CARD
+// =============================================================================
+// Manual-mode valve control. Has two sub-modes selected by [valveControlEnabled]:
+//   ON  → State mode: Open / Close switch with confirmation tracking
+//   OFF → Angle mode: 0–90° slider + dial visualization + Set Angle button
+//
+// All state lives in the parent screen. This widget just renders + raises
+// callbacks for every user action.
+// =============================================================================
+
 class ValveControlCard extends StatelessWidget {
-  final bool valveControlEnabled;
-  final ValueChanged<bool>? onValveControlEnabledChanged;
-  final bool waitingForConfirmation;
-  final int confirmationCountdown;
-  final int? pendingTargetAngle;
+  // ── Mode toggle ──
+  final bool valveControlEnabled; // true = state mode, false = angle mode
+  final ValueChanged<bool> onValveControlEnabledChanged;
+
+  // ── State mode ──
   final bool isOpen;
-  final int actualPos;
+  final int actualPosition;
   final bool isUpdating;
-  final ValueChanged<bool> onStateControlChanged;
+  final ValueChanged<bool> onOpenCloseToggled; // true=open, false=close
+
+  // ── Angle mode ──
   final double sliderAngle;
   final bool isAngleUpdating;
-  final ValueChanged<double>? onSliderChanged;
-  final ValueChanged<double>? onSliderChangeStart;
-  final ValueChanged<double>? onSliderChangeEnd;
-  final VoidCallback onSetAngle;
+  final ValueChanged<double> onSliderChanged;
+  final VoidCallback onSliderEditStart;
+  final VoidCallback onSliderEditEnd;
+  final ValueChanged<int> onSetAnglePressed;
+
+  // ── Confirmation tracking (shared across both sub-modes) ──
+  final bool waitingForConfirmation;
+  final int? pendingTargetAngle;
+  final int confirmationCountdown;
 
   const ValveControlCard({
     super.key,
     required this.valveControlEnabled,
     required this.onValveControlEnabledChanged,
-    required this.waitingForConfirmation,
-    required this.confirmationCountdown,
-    this.pendingTargetAngle,
     required this.isOpen,
-    required this.actualPos,
+    required this.actualPosition,
     required this.isUpdating,
-    required this.onStateControlChanged,
+    required this.onOpenCloseToggled,
     required this.sliderAngle,
     required this.isAngleUpdating,
     required this.onSliderChanged,
-    required this.onSliderChangeStart,
-    required this.onSliderChangeEnd,
-    required this.onSetAngle,
+    required this.onSliderEditStart,
+    required this.onSliderEditEnd,
+    required this.onSetAnglePressed,
+    required this.waitingForConfirmation,
+    required this.pendingTargetAngle,
+    required this.confirmationCountdown,
   });
 
   @override
@@ -45,6 +63,9 @@ class ValveControlCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // =========================================================
+            // SECTION 1: HEADER + MODE TOGGLE
+            // =========================================================
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -56,16 +77,25 @@ class ValveControlCard extends StatelessWidget {
                   scale: 1.2,
                   child: Switch(
                     value: valveControlEnabled,
-                    onChanged: waitingForConfirmation ? null : onValveControlEnabledChanged,
+                    // Disable mode switch while waiting for confirmation
+                    onChanged: waitingForConfirmation
+                        ? null
+                        : onValveControlEnabledChanged,
                     activeColor: const Color(0xFF3F51B5),
                   ),
                 ),
               ],
             ),
+
+            // =========================================================
+            // SECTION 2: MODE INDICATOR LABEL
+            // =========================================================
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: Text(
-                valveControlEnabled ? 'Mode: Open / Close' : 'Mode: Angle control',
+                valveControlEnabled
+                    ? 'Mode: Open / Close'
+                    : 'Mode: Angle control',
                 style: TextStyle(
                   color: Colors.grey[600],
                   fontSize: 12,
@@ -73,24 +103,33 @@ class ValveControlCard extends StatelessWidget {
                 ),
               ),
             ),
+
             const SizedBox(height: 8),
 
-            // STATE MODE
+            // =========================================================
+            // SECTION 3: STATE MODE (toggle ON)
+            // =========================================================
             if (valveControlEnabled) ...[
+              // 3.1  "By state" row with Open/Close switch
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('By state', style: TextStyle(color: Colors.grey)),
+                  const Text(
+                    'By state',
+                    style: TextStyle(color: Colors.grey),
+                  ),
                   Row(
                     children: [
                       Text(
                         isOpen ? 'Open' : 'Close',
                         style: TextStyle(
                           fontWeight: FontWeight.w500,
-                          color: isOpen ? Colors.green[700] : Colors.red[700],
+                          color:
+                              isOpen ? Colors.green[700] : Colors.red[700],
                         ),
                       ),
                       const SizedBox(width: 8),
+                      // Spinner while sending OR waiting; Switch otherwise
                       (isUpdating || waitingForConfirmation)
                           ? SizedBox(
                               width: 48,
@@ -101,14 +140,16 @@ class ValveControlCard extends StatelessWidget {
                                   height: 20,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    color: waitingForConfirmation ? Colors.blue : null,
+                                    color: waitingForConfirmation
+                                        ? Colors.blue
+                                        : null,
                                   ),
                                 ),
                               ),
                             )
                           : Switch(
                               value: isOpen,
-                              onChanged: onStateControlChanged,
+                              onChanged: onOpenCloseToggled,
                               activeColor: Colors.green,
                               inactiveTrackColor: Colors.red.shade200,
                               inactiveThumbColor: Colors.red,
@@ -117,17 +158,27 @@ class ValveControlCard extends StatelessWidget {
                   ),
                 ],
               ),
+
               const SizedBox(height: 12),
-              _buildActualPositionInfo(),
+
+              // 3.2  Actual position display
+              _buildActualPositionRow(),
             ],
 
-            // ANGLE MODE
+            // =========================================================
+            // SECTION 4: ANGLE MODE (toggle OFF)
+            // =========================================================
             if (!valveControlEnabled) ...[
               const Text('By angle', style: TextStyle(color: Colors.grey)),
               const SizedBox(height: 12),
+
+              // 4.1  Waiting indicator banner (only while waiting)
               if (waitingForConfirmation) ...[
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.blue.shade50,
                     borderRadius: BorderRadius.circular(8),
@@ -151,7 +202,7 @@ class ValveControlCard extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        'Target: ${pendingTargetAngle}°',
+                        'Target: $pendingTargetAngle°',
                         style: TextStyle(
                           color: Colors.blue.shade700,
                           fontWeight: FontWeight.w500,
@@ -163,6 +214,8 @@ class ValveControlCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
               ],
+
+              // 4.2  Angle dial (ring + needle + center dot)
               Center(
                 child: SizedBox(
                   width: 140,
@@ -170,30 +223,40 @@ class ValveControlCard extends StatelessWidget {
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
+                      // Outer ring
                       Container(
                         width: 120,
                         height: 120,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          border: Border.all(color: Colors.grey[300]!, width: 8),
+                          border: Border.all(
+                            color: Colors.grey[300]!,
+                            width: 8,
+                          ),
                         ),
                       ),
+                      // Needle (rotated by current slider angle)
                       Transform.rotate(
                         angle: (sliderAngle / 90) * (math.pi / 2),
                         child: Container(
                           width: 4,
                           height: 50,
                           decoration: BoxDecoration(
-                            color: waitingForConfirmation ? Colors.blue : const Color(0xFF3F51B5),
+                            color: waitingForConfirmation
+                                ? Colors.blue
+                                : const Color(0xFF3F51B5),
                             borderRadius: BorderRadius.circular(2),
                           ),
                         ),
                       ),
+                      // Center dot
                       Container(
                         width: 12,
                         height: 12,
                         decoration: BoxDecoration(
-                          color: waitingForConfirmation ? Colors.blue : const Color(0xFF3F51B5),
+                          color: waitingForConfirmation
+                              ? Colors.blue
+                              : const Color(0xFF3F51B5),
                           shape: BoxShape.circle,
                         ),
                       ),
@@ -201,43 +264,68 @@ class ValveControlCard extends StatelessWidget {
                   ),
                 ),
               ),
+
               const SizedBox(height: 8),
+
+              // 4.3  Big angle value text
               Center(
                 child: Text(
                   '${sliderAngle.round()}°',
                   style: TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.bold,
-                    color: waitingForConfirmation ? Colors.blue : const Color(0xFF3F51B5),
+                    color: waitingForConfirmation
+                        ? Colors.blue
+                        : const Color(0xFF3F51B5),
                   ),
                 ),
               ),
+
               const SizedBox(height: 8),
+
+              // 4.4  Slider 0° ─────●───── 90°
               Row(
                 children: [
-                  const Text('0°', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                  const Text(
+                    '0°',
+                    style: TextStyle(color: Colors.grey, fontSize: 12),
+                  ),
                   Expanded(
                     child: Slider(
                       value: sliderAngle,
                       min: 0,
                       max: 90,
                       divisions: 90,
-                      activeColor: waitingForConfirmation ? Colors.grey : const Color(0xFF3F51B5),
+                      activeColor: waitingForConfirmation
+                          ? Colors.grey
+                          : const Color(0xFF3F51B5),
                       inactiveColor: Colors.grey[300],
                       label: '${sliderAngle.round()}°',
-                      onChanged: onSliderChanged,
-                      onChangeStart: onSliderChangeStart,
-                      onChangeEnd: onSliderChangeEnd,
+                      onChanged: waitingForConfirmation ? null : onSliderChanged,
+                      onChangeStart: waitingForConfirmation
+                          ? null
+                          : (_) => onSliderEditStart(),
+                      onChangeEnd: waitingForConfirmation
+                          ? null
+                          : (_) => onSliderEditEnd(),
                     ),
                   ),
-                  const Text('90°', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                  const Text(
+                    '90°',
+                    style: TextStyle(color: Colors.grey, fontSize: 12),
+                  ),
                 ],
               ),
+
               const SizedBox(height: 8),
+
+              // 4.5  "Set Angle" button
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
-                  onPressed: (isAngleUpdating || waitingForConfirmation) ? null : onSetAngle,
+                  onPressed: (isAngleUpdating || waitingForConfirmation)
+                      ? null
+                      : () => onSetAnglePressed(sliderAngle.round()),
                   icon: (isAngleUpdating || waitingForConfirmation)
                       ? const SizedBox(
                           width: 18,
@@ -248,21 +336,27 @@ class ValveControlCard extends StatelessWidget {
                           ),
                         )
                       : const Icon(Icons.send),
-                  label: Text(waitingForConfirmation
-                      ? 'Waiting... ${confirmationCountdown}s'
-                      : isAngleUpdating
-                          ? 'Sending...'
-                          : 'Set Angle to ${sliderAngle.round()}°'),
+                  label: Text(
+                    waitingForConfirmation
+                        ? 'Waiting... ${confirmationCountdown}s'
+                        : isAngleUpdating
+                            ? 'Sending...'
+                            : 'Set Angle to ${sliderAngle.round()}°',
+                  ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF3F51B5),
                     foregroundColor: Colors.white,
-                    disabledBackgroundColor: const Color(0xFF3F51B5).withOpacity(0.6),
+                    disabledBackgroundColor:
+                        const Color(0xFF3F51B5).withOpacity(0.6),
                     padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
                 ),
               ),
+
               const SizedBox(height: 8),
-              _buildActualPositionInfo(),
+
+              // 4.6  Actual position display
+              _buildActualPositionRow(),
             ],
           ],
         ),
@@ -270,7 +364,10 @@ class ValveControlCard extends StatelessWidget {
     );
   }
 
-  Widget _buildActualPositionInfo() {
+  // ───────────────────────────────────────────────────────────────────────
+  // Helper: actual-position info row (used by both state and angle modes)
+  // ───────────────────────────────────────────────────────────────────────
+  Widget _buildActualPositionRow() {
     return Container(
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
@@ -285,11 +382,11 @@ class ValveControlCard extends StatelessWidget {
             style: TextStyle(color: Colors.grey[600], fontSize: 12),
           ),
           Text(
-            '$actualPos°',
+            '$actualPosition°',
             style: TextStyle(
               fontWeight: FontWeight.bold,
               fontSize: 14,
-              color: actualPos >= 45 ? Colors.green[700] : Colors.red[700],
+              color: actualPosition >= 45 ? Colors.green[700] : Colors.red[700],
             ),
           ),
         ],

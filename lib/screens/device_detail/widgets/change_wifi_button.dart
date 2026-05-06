@@ -1,5 +1,13 @@
 import 'package:flutter/material.dart';
 
+// =============================================================================
+// CHANGE WIFI BUTTON
+// =============================================================================
+// Direct-mode-only button at the bottom of the screen. Tapping it opens the
+// WiFi credentials dialog (handled in the parent screen via [onPressed]) so
+// the user can push home WiFi credentials to the connected ESP32.
+// =============================================================================
+
 class ChangeWifiButton extends StatelessWidget {
   final VoidCallback onPressed;
 

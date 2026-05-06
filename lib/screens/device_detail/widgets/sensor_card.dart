@@ -1,9 +1,15 @@
 import 'package:flutter/material.dart';
 
-class SensorCard extends StatelessWidget {
-  final VoidCallback onSave;
+// =============================================================================
+// SENSOR CARD
+// =============================================================================
+// Placeholder UI for the future sensor mode. The current implementation just
+// shows a fake "Add sensor" panel and upper/lower limit fields. The Save
+// button shows a dummy snackbar — no real persistence yet.
+// =============================================================================
 
-  const SensorCard({super.key, required this.onSave});
+class SensorCard extends StatelessWidget {
+  const SensorCard({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -13,11 +19,19 @@ class SensorCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ─────────────────────────────────────────────────────────────
+            // Header
+            // ─────────────────────────────────────────────────────────────
             const Text(
               'Sensor Settings',
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
+
             const SizedBox(height: 16),
+
+            // ─────────────────────────────────────────────────────────────
+            // "+ Add sensor" placeholder box
+            // ─────────────────────────────────────────────────────────────
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(16),
@@ -32,7 +46,12 @@ class SensorCard extends StatelessWidget {
                 ),
               ),
             ),
+
             const SizedBox(height: 16),
+
+            // ─────────────────────────────────────────────────────────────
+            // Upper limit field
+            // ─────────────────────────────────────────────────────────────
             Row(
               children: [
                 const Expanded(flex: 2, child: Text('Upper limit')),
@@ -49,7 +68,12 @@ class SensorCard extends StatelessWidget {
                 ),
               ],
             ),
+
             const SizedBox(height: 12),
+
+            // ─────────────────────────────────────────────────────────────
+            // Lower limit field
+            // ─────────────────────────────────────────────────────────────
             Row(
               children: [
                 const Expanded(flex: 2, child: Text('Lower limit')),
@@ -66,11 +90,20 @@ class SensorCard extends StatelessWidget {
                 ),
               ],
             ),
+
             const SizedBox(height: 16),
+
+            // ─────────────────────────────────────────────────────────────
+            // Save button (placeholder snackbar only)
+            // ─────────────────────────────────────────────────────────────
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: onSave,
+                onPressed: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Sensor settings saved!')),
+                  );
+                },
                 icon: const Icon(Icons.save),
                 label: const Text('save'),
                 style: ElevatedButton.styleFrom(

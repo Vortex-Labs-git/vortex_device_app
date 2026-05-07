@@ -651,15 +651,10 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
   void _startConfirmationWait(int targetAngle) {
     _confirmationTimer?.cancel();
 
-    // Direct mode talks straight to the ESP32 over the local AP, so the
-    // valve confirms its position much faster — 10s is plenty. Server
-    // mode goes through the cloud, so we give it the full 20s.
-    final int timeoutSeconds = _isDirectMode ? 10 : 20;
-
     setState(() {
       _waitingForConfirmation = true;
       _pendingTargetAngle = targetAngle;
-      _confirmationCountdown = timeoutSeconds;
+      _confirmationCountdown = 20;
     });
 
     _confirmationTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -1317,7 +1312,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
           children: [
             // 11.1  Device info card (always shown)
             DeviceInfoCard(
-              productType: _device['vwv_version']?.toString() ?? 'Unknown',
+              productType: _device['vwv_version'] ?? 'WiFi Valve v1',
               deviceName: _device['vwv_name'] ??
                   _device['device_name'] ??
                   'Unknown',

@@ -172,48 +172,8 @@ class ValveControlCard extends StatelessWidget {
               const Text('By angle', style: TextStyle(color: Colors.grey)),
               const SizedBox(height: 12),
 
-              // 4.1  Waiting indicator banner (only while waiting)
-              if (waitingForConfirmation) ...[
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.blue.shade200),
-                  ),
-                  child: Row(
-                    children: [
-                      const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          'Waiting for valve... ${confirmationCountdown}s',
-                          style: TextStyle(
-                            color: Colors.blue.shade700,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ),
-                      Text(
-                        'Target: $pendingTargetAngle°',
-                        style: TextStyle(
-                          color: Colors.blue.shade700,
-                          fontWeight: FontWeight.w500,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-              ],
+              // 4.1  (waiting banner removed — the Set Angle button below
+              //       already shows the countdown)
 
               // 4.2  Angle dial (ring + needle + center dot)
               Center(

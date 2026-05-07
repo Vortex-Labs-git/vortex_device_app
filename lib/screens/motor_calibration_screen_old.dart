@@ -211,50 +211,21 @@ class _MotorCalibrationScreenState extends State<MotorCalibrationScreen> {
   }
 
   /// Snapshot the current live encoder value into the close-value field.
-  /// After applying, warn if the new pair is invalid (close > 0 && open > 0
-  /// && close < open). The snapshot is still applied — the user might be
-  /// planning to fix the open value next.
   void _onSetCloseValue() {
     if (_liveEncoderValue == null) {
       _showSnack('No encoder value yet.', isError: true);
       return;
     }
     setState(() => _closeValueCtrl.text = _liveEncoderValue.toString());
-    _warnIfInvalidPair();
   }
 
   /// Snapshot the current live encoder value into the open-value field.
-  /// Same warning pattern as [_onSetCloseValue].
   void _onSetOpenValue() {
     if (_liveEncoderValue == null) {
       _showSnack('No encoder value yet.', isError: true);
       return;
     }
     setState(() => _openValueCtrl.text = _liveEncoderValue.toString());
-    _warnIfInvalidPair();
-  }
-
-  /// Read both fields and show an orange warning snackbar if they violate
-  /// the rule: close > 0 && open > 0 && close < open. Used by the snapshot
-  /// buttons so the user gets early feedback instead of only at Save.
-  void _warnIfInvalidPair() {
-    final close = int.tryParse(_closeValueCtrl.text.trim());
-    final open = int.tryParse(_openValueCtrl.text.trim());
-
-    // If either field is empty / non-numeric, nothing to compare yet
-    if (close == null || open == null) return;
-
-    if (close <= 0 || open <= 0) {
-      _showSnack(
-        '⚠️ Close and open values must both be greater than 0.',
-        isWarning: true,
-      );
-    } else if (close >= open) {
-      _showSnack(
-        '⚠️ Close ($close) must be less than Open ($open). Did you swap them?',
-        isWarning: true,
-      );
-    }
   }
 
   /// Save the limit values to the ESP32.
@@ -264,27 +235,12 @@ class _MotorCalibrationScreenState extends State<MotorCalibrationScreen> {
     final closeLimit = int.tryParse(_closeValueCtrl.text.trim());
     final openLimit = int.tryParse(_openValueCtrl.text.trim());
 
-    // Both fields must contain valid numbers
     if (closeLimit == null || openLimit == null) {
       _showSnack('Both close and open values must be numbers.', isError: true);
       return;
     }
-
-    // Both values must be greater than zero
-    if (closeLimit <= 0 || openLimit <= 0) {
-      _showSnack(
-        'Close and open values must be greater than 0.',
-        isError: true,
-      );
-      return;
-    }
-
-    // Close must be strictly less than Open
-    if (closeLimit >= openLimit) {
-      _showSnack(
-        'Close value must be less than Open value.',
-        isError: true,
-      );
+    if (closeLimit == openLimit) {
+      _showSnack('Close and open values must differ.', isError: true);
       return;
     }
 
@@ -305,29 +261,13 @@ class _MotorCalibrationScreenState extends State<MotorCalibrationScreen> {
     _showSnack('Calibration saved.');
   }
 
-  /// Show a snackbar.
-  /// Color priority: error (red) > warning (orange) > success (green).
-  void _showSnack(
-    String text, {
-    bool isError = false,
-    bool isWarning = false,
-  }) {
+  void _showSnack(String text, {bool isError = false}) {
     if (!mounted) return;
-
-    Color bgColor;
-    if (isError) {
-      bgColor = Colors.red[700]!;
-    } else if (isWarning) {
-      bgColor = Colors.orange[700]!;
-    } else {
-      bgColor = Colors.green[700]!;
-    }
-
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(text),
-        backgroundColor: bgColor,
-        duration: const Duration(seconds: 3),
+        backgroundColor: isError ? Colors.red[700] : Colors.green[700],
+        duration: const Duration(seconds: 2),
       ),
     );
   }

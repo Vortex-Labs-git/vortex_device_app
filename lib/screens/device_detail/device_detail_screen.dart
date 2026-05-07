@@ -1312,7 +1312,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
           children: [
             // 11.1  Device info card (always shown)
             DeviceInfoCard(
-              productType: _device['type'] ?? 'WiFi Valve v1',
+              productType: _device['vwv_version'] ?? 'WiFi Valve v1',
               deviceName: _device['vwv_name'] ??
                   _device['device_name'] ??
                   'Unknown',

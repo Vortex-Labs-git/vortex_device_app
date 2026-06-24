@@ -1,0 +1,169 @@
+Windows PowerShell
+Copyright (C) Microsoft Corporation. All rights reserved.
+
+Install the latest PowerShell for new features and improvements! https://aka.ms/PSWindows
+
+PS C:\Vortex_labs\vortax_labs _git_sinc\lib> Get-ChildItem -Recurse
+
+
+    Directory: C:\Vortex_labs\vortax_labs _git_sinc\lib
+
+
+Mode                 LastWriteTime         Length Name
+----                 -------------         ------ ----
+d-----         3/18/2026   6:56 AM                models
+d-----          5/7/2026  11:02 PM                screens
+d-----          4/5/2026  12:52 AM                services
+d-----         3/18/2026   6:56 AM                utils
+d-----         3/18/2026   6:56 AM                widgets
+-a----          5/7/2026   1:35 AM            814 main.dart
+
+
+    Directory: C:\Vortex_labs\vortax_labs _git_sinc\lib\models
+
+
+Mode                 LastWriteTime         Length Name
+----                 -------------         ------ ----
+-a----         12/4/2025   1:05 AM           2190 valve_device.dart
+
+
+    Directory: C:\Vortex_labs\vortax_labs _git_sinc\lib\screens
+
+
+Mode                 LastWriteTime         Length Name
+----                 -------------         ------ ----
+d-----          5/7/2026  11:03 PM                device_detail
+d-----          5/7/2026   1:15 AM                home
+d-----          5/6/2026  10:04 PM                login
+d-----          5/7/2026   1:38 AM                main
+-a----         3/28/2026   6:35 PM           3873 about_screen.dart
+-a----          5/6/2026   9:13 PM          16560 manual_screen.dart
+-a----          5/7/2026   9:48 PM          21373 motor_calibration_screen.dart
+-a----          5/7/2026   1:40 AM           6248 user_screen.dart
+-a----         3/21/2026   9:18 PM          20038 wifi_setup_screen.dart
+
+
+    Directory: C:\Vortex_labs\vortax_labs _git_sinc\lib\screens\device_detail
+
+
+Mode                 LastWriteTime         Length Name
+----                 -------------         ------ ----
+d-----          5/7/2026   1:03 AM                widgets
+-a----          5/7/2026  10:17 PM          49460 device_detail_screen.dart
+
+
+    Directory: C:\Vortex_labs\vortax_labs _git_sinc\lib\screens\device_detail\widgets
+
+
+Mode                 LastWriteTime         Length Name
+----                 -------------         ------ ----
+-a----          5/7/2026   1:01 AM           1384 change_wifi_button.dart
+-a----          5/7/2026   1:01 AM           5020 control_mode_card.dart
+-a----          5/6/2026  11:16 PM           1000 device_app_bar.dart
+-a----          5/7/2026   1:01 AM           4663 device_info_card.dart
+-a----          5/7/2026   1:01 AM           5954 mode_toggle_card.dart
+-a----          5/7/2026   1:01 AM           1354 motor_calibration_button.dart
+-a----          5/7/2026   1:01 AM           8947 schedule_card.dart
+-a----          5/7/2026   1:01 AM           5610 sensor_card.dart
+-a----          5/7/2026  10:23 PM          13682 valve_control_card.dart
+
+
+    Directory: C:\Vortex_labs\vortax_labs _git_sinc\lib\screens\home
+
+
+Mode                 LastWriteTime         Length Name
+----                 -------------         ------ ----
+d-----          5/7/2026   1:15 AM                widgets
+-a----          5/7/2026   1:14 AM          25112 home_screen.dart
+
+
+    Directory: C:\Vortex_labs\vortax_labs _git_sinc\lib\screens\home\widgets
+
+
+Mode                 LastWriteTime         Length Name
+----                 -------------         ------ ----
+-a----          5/7/2026   1:14 AM           3953 ap_mode_banner.dart
+-a----          5/7/2026   1:14 AM           2519 connection_status_bar.dart
+-a----          5/7/2026   1:14 AM          10022 debug_panel.dart
+-a----          5/7/2026   1:14 AM           3305 debug_toggle_bar.dart
+-a----          5/7/2026   1:14 AM           5672 device_card.dart
+-a----          5/7/2026   1:14 AM           1388 empty_view.dart
+-a----          5/7/2026   1:14 AM           1482 error_view.dart
+
+
+    Directory: C:\Vortex_labs\vortax_labs _git_sinc\lib\screens\login
+
+
+Mode                 LastWriteTime         Length Name
+----                 -------------         ------ ----
+d-----          5/6/2026  10:04 PM                widgets
+-a----          5/6/2026   9:58 PM           5048 login_screen.dart
+
+
+    Directory: C:\Vortex_labs\vortax_labs _git_sinc\lib\screens\login\widgets
+
+
+Mode                 LastWriteTime         Length Name
+----                 -------------         ------ ----
+-a----          5/6/2026   9:58 PM            888 forgot_password_button.dart
+-a----          5/6/2026   9:58 PM           1702 login_button.dart
+-a----          5/6/2026   9:58 PM           1353 login_error.dart
+-a----          5/6/2026   9:58 PM            818 login_icon.dart
+-a----          5/6/2026   9:58 PM           1782 login_password_field.dart
+-a----          5/6/2026   9:58 PM           1112 login_username_field.dart
+
+
+    Directory: C:\Vortex_labs\vortax_labs _git_sinc\lib\screens\main
+
+
+Mode                 LastWriteTime         Length Name
+----                 -------------         ------ ----
+d-----          5/7/2026   1:39 AM                widgets
+-a----          5/7/2026   1:29 AM           4079 main_screen.dart
+
+
+    Directory: C:\Vortex_labs\vortax_labs _git_sinc\lib\screens\main\widgets
+
+
+Mode                 LastWriteTime         Length Name
+----                 -------------         ------ ----
+-a----          5/7/2026   1:29 AM            897 add_device_fab.dart
+-a----          5/7/2026   1:29 AM           1356 main_app_bar.dart
+-a----          5/7/2026   1:29 AM           1509 main_bottom_nav.dart
+
+
+    Directory: C:\Vortex_labs\vortax_labs _git_sinc\lib\services
+
+
+Mode                 LastWriteTime         Length Name
+----                 -------------         ------ ----
+-a----          4/3/2026   9:54 PM          10307 auth_service.dart
+-a----          4/4/2026  10:45 PM          12965 AUTH_SERVICE_README.md
+-a----         4/25/2026   8:42 PM          16714 esp_direct_service.dart
+-a----          4/5/2026  12:50 AM          25154 ESP_DIRECT_SERVICE_README.md
+-a----         3/18/2026   5:18 PM           5390 local_storage_service.dart
+-a----         3/18/2026   1:39 PM         169382 vortex_app.pdf
+-a----          4/5/2026  12:08 AM          14274 websocket_service.dart
+-a----          4/4/2026  11:27 PM          23253 WEBSOCKET_SERVICE_README.md
+
+
+    Directory: C:\Vortex_labs\vortax_labs _git_sinc\lib\utils
+
+
+Mode                 LastWriteTime         Length Name
+----                 -------------         ------ ----
+-a----         12/4/2025   1:05 AM           1517 constants.dart
+
+
+    Directory: C:\Vortex_labs\vortax_labs _git_sinc\lib\widgets
+
+
+Mode                 LastWriteTime         Length Name
+----                 -------------         ------ ----
+-a----         12/4/2025   1:05 AM           5100 device_card.dart
+
+
+PS C:\Vortex_labs\vortax_labs _git_sinc\lib>
+
+
+

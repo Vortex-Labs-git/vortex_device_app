@@ -223,6 +223,52 @@ class AuthService {
   }
 
   // ============================================================
+  // 2b. Change Password (REST API)
+  // ============================================================
+  /// Changes the account password via change_password.php.
+  /// On success, updates saved_password in SharedPreferences so silent
+  /// token refresh keeps working — otherwise the next token expiry would
+  /// fail to refresh and force a manual re-login.
+  static Future<Map<String, dynamic>> changePassword(
+    String oldPassword,
+    String newPassword,
+  ) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/change_password.php'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'old_password': oldPassword,
+          'new_password': newPassword,
+        }),
+      );
+
+      print("🔑 Change Password Response: ${response.body}");
+
+      final data = jsonDecode(response.body);
+
+      if (data['success'] == true) {
+        // CRITICAL: keep saved_password in sync for silent refresh
+        await prefs.setString('saved_password', newPassword);
+        print("✅ Password changed — saved_password updated");
+      }
+
+      return data;
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Connection error: $e',
+      };
+    }
+  }
+
+  // ============================================================
   // 3. Logout and Clear Data
   // ============================================================
   static Future<void> logout() async {

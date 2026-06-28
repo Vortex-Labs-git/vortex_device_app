@@ -7,7 +7,7 @@ import '../../services/websocket_service.dart';
 import '../../services/local_storage_service.dart';
 import '../../services/esp_direct_service.dart';
 import '../device_detail/device_detail_screen.dart';
-
+import '../device_detail/sensor_detail_screen.dart';
 // Local card widgets
 import 'widgets/error_view.dart';
 import 'widgets/empty_view.dart';
@@ -520,10 +520,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ),
       );
     } else if (status == 'online') {
+      final bool isSensor =
+          device['id']?.toString().toUpperCase().startsWith('SU') ?? false;
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => DeviceDetailScreen(deviceData: device),
+          builder: (context) => isSensor
+              ? SensorDetailScreen(deviceData: device)
+              : DeviceDetailScreen(deviceData: device),
         ),
       );
     } else {

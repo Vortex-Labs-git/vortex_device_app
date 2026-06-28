@@ -35,8 +35,10 @@ class DeviceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final String name =
-        device['vwv_name'] ?? device['device_name'] ?? 'Unknown Device';
+    final String name = device['name'] ??
+        device['vwv_name'] ??
+        device['device_name'] ??
+        'Unknown Device';
     final String id = device['id']?.toString() ?? '';
     final String idPrefix = id.toUpperCase();
     final bool isValve = idPrefix.startsWith('VA');    // valve image

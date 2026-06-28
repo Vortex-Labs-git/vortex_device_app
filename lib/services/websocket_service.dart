@@ -280,8 +280,12 @@ class WebSocketService {
           break;
         // ---- Device Detail Update ----
         case 'device_detail':
-          final Map<String, dynamic> deviceData = data['data'] ?? {};
-          print("📊 WS: Received detail for device ${data['device_id']}");
+        case 'device_basic_detail':
+          final Map<String, dynamic> deviceData = data['data'] != null
+              ? Map<String, dynamic>.from(data['data'])
+              : Map<String, dynamic>.from(data);
+          print(
+              "📊 WS: Received basic detail for ${data['device_id'] ?? data['id']}");
           _deviceDetailController.add(deviceData);
           break;
 

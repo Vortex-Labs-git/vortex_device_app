@@ -456,7 +456,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String _getDeviceStatus(Map<String, dynamic> device) {
     if (device['_esp_connected'] == true) return 'esp_connected';
 
-    final lastSeen = device['vwv_last_seen'];
+    final lastSeen = device['last_seen'];
     if (lastSeen == null ||
         lastSeen.toString().isEmpty ||
         lastSeen == 'NULL') {

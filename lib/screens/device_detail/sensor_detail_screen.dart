@@ -126,47 +126,60 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
   }
 
   // ----- Unit info: Product Type / Name (Edit) / Status / Active Sensors -----
-  Widget _buildUnitInfoCard(SensorUnit unit) {
+Widget _buildUnitInfoCard(SensorUnit unit) {
     final bool online = _isDeviceOnline(unit.lastSeen);
     final Color statusColor = online ? Colors.green : Colors.red;
     final String displayName = unit.name.isNotEmpty
         ? unit.name
         : (widget.deviceData['name']?.toString() ?? 'Sensor Unit');
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            _infoRow('Product Type', Text(
-              unit.version.isNotEmpty ? unit.version : 'Sensor unit',
-              style: const TextStyle(fontWeight: FontWeight.w500),
-            )),
-            const Divider(),
-            _infoRow('Name', Row(children: [
-              TextButton(
-                onPressed: _onEditName,
-                child: const Text('Edit', style: TextStyle(color: Colors.blue)),
-              ),
-              Text(displayName, style: const TextStyle(fontWeight: FontWeight.w500)),
-            ])),
-            const Divider(),
-            _infoRow('Connection Status', Row(children: [
-              Container(
-                width: 8, height: 8,
-                decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle),
-              ),
-              const SizedBox(width: 6),
-              Text(online ? 'online' : 'offline',
-                  style: TextStyle(color: statusColor, fontWeight: FontWeight.w500)),
-            ])),
-            const Divider(),
-            _infoRow('Active Sensors', Text(
-              '${unit.sensorCount}',
-              style: const TextStyle(fontWeight: FontWeight.w500),
-            )),
-          ],
-        ),
+    return Container(
+      // Highlighted so the unit summary stands apart from the sensor cards:
+      // light indigo tint + indigo border + soft shadow (a "lifted" look).
+      margin: const EdgeInsets.symmetric(horizontal: 4),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE8EAF6),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF3F51B5), width: 1.5),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x2E3F51B5),
+            blurRadius: 12,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          _infoRow('Product Type', Text(
+            unit.version.isNotEmpty ? unit.version : 'Sensor unit',
+            style: const TextStyle(fontWeight: FontWeight.w500),
+          )),
+          const Divider(),
+          _infoRow('Name', Row(children: [
+            TextButton(
+              onPressed: _onEditName,
+              child: const Text('Edit', style: TextStyle(color: Colors.blue)),
+            ),
+            Text(displayName, style: const TextStyle(fontWeight: FontWeight.w500)),
+          ])),
+          const Divider(),
+          _infoRow('Connection Status', Row(children: [
+            Container(
+              width: 8, height: 8,
+              decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 6),
+            Text(online ? 'online' : 'offline',
+                style: TextStyle(color: statusColor, fontWeight: FontWeight.w500)),
+          ])),
+          const Divider(),
+          _infoRow('Active Sensors', Text(
+            '${unit.sensorCount}',
+            style: const TextStyle(fontWeight: FontWeight.w500),
+          )),
+        ],
       ),
     );
   }

@@ -10,6 +10,17 @@ import 'dart:convert';
 //   - sensor_data arrives as an ESCAPED JSON STRING  -> decoded to List<Sensor>
 //     (same trick the valve schedule uses). Parsing is defensive: a missing or
 //     malformed payload yields an empty list instead of throwing.
+//
+// TWO PAYLOAD SHAPES, TWO FACTORIES:
+//   - fromJson        CLOUD  device_basic_detail push (via Ratchet server)
+//                     keys: id / unit_name / unit_version / unit_last_seen /
+//                           no_sensors / sensor_data
+//   - fromDirectJson  DIRECT sensor_unit_info reply (ESP32 AP mode)
+//                     keys: device_id / device_name / no_sensors / data
+//                     No version or last_seen fields — the ESP32 doesn't
+//                     send them, so version falls back to a static label
+//                     and lastSeen stays null (screen must NOT run the
+//                     30s online check in direct mode).
 // =============================================================================
 
 /// One reading inside a sensor unit (Temperature, Humidity, Moisture, ...).
@@ -45,9 +56,9 @@ class Sensor {
 
 class SensorUnit {
   final String id;         // "SU202601003"
-  final String name;       // unit_name
+  final String name;       // unit_name (cloud) / device_name (direct)
   final String version;    // unit_version  e.g. "Sensor unit v1.0"
-  final String? lastSeen;  // unit_last_seen (raw server string)
+  final String? lastSeen;  // unit_last_seen (raw server string; null in direct)
   final int sensorCount;   // no_sensors (server sends a String)
   final List<Sensor> sensors;
 
@@ -60,6 +71,11 @@ class SensorUnit {
     this.sensors = const [],
   });
 
+  /// CLOUD payload — device_basic_detail push from the Ratchet server.
+  /// Architecture Doc v3, section B "WiFi Sensor Unit Details Screen":
+  /// { "event":"device_basic_detail", "id":"SU...", "unit_name":"garden 1",
+  ///   "unit_version":"Sensor unit v1.0", "unit_last_seen":"...",
+  ///   "no_sensors":"3", "sensor_data":"[{...}]" }
   factory SensorUnit.fromJson(Map<String, dynamic> json) {
     return SensorUnit(
       id: json['id']?.toString() ?? '',
@@ -68,6 +84,26 @@ class SensorUnit {
       lastSeen: json['unit_last_seen']?.toString(),
       sensorCount: _parseInt(json['no_sensors']),
       sensors: _parseSensors(json['sensor_data']),
+    );
+  }
+
+  /// DIRECT payload — sensor_unit_info reply from the ESP32 in AP mode.
+  /// Architecture Doc v3, "Vortex Sensor Unit / Details Screen":
+  /// { "event":"sensor_unit_info", "device_id":"SU202601003",
+  ///   "device_name":"garden 1", "timestamp":"...",
+  ///   "no_sensors":"3", "data":"[{...}]" }
+  /// 
+  /// `data` is the same escaped-JSON-string trick as cloud `sensor_data`,
+  /// so it reuses _parseSensors unchanged. version/lastSeen are not sent
+  /// in direct mode: version gets a static fallback label, lastSeen null.
+  factory SensorUnit.fromDirectJson(Map<String, dynamic> json) {
+    return SensorUnit(
+      id: json['device_id']?.toString() ?? '',
+      name: json['device_name']?.toString() ?? '',
+      version: 'Sensor unit',        // not sent over direct link
+      lastSeen: null,                // not sent over direct link
+      sensorCount: _parseInt(json['no_sensors']),
+      sensors: _parseSensors(json['data']),
     );
   }
 
@@ -86,9 +122,10 @@ class SensorUnit {
     return int.tryParse(raw?.toString() ?? '') ?? 0;
   }
 
-  // -- sensor_data is an escaped JSON string; decode defensively. Falls back
-  //    to an empty list on null / empty / malformed input instead of throwing.
-  //    Also tolerates the server ever sending a real List instead of a String.
+  // -- sensor_data / data is an escaped JSON string; decode defensively.
+  //    Falls back to an empty list on null / empty / malformed input instead
+  //    of throwing. Also tolerates the device ever sending a real List
+  //    instead of a String.
   static List<Sensor> _parseSensors(dynamic raw) {
     if (raw == null) return const [];
 

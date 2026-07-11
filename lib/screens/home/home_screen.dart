@@ -508,20 +508,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void _onDeviceTap(Map<String, dynamic> device) {
     final status = _getDeviceStatus(device);
 
+    // Device category by id prefix: VA- = WiFi valve, SU- = sensor unit.
+    // Used by BOTH branches — direct mode must also route SU- devices to
+    // the sensor screen (previously they always opened the valve screen).
+    final bool isSensor =
+        device['id']?.toString().toUpperCase().startsWith('SU') ?? false;
+
     if (status == 'esp_connected') {
-      // Open in direct ESP32 mode (manual control only)
+      // Open in direct ESP32 mode (valve: manual control only;
+      // sensor unit: read-only data view)
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => DeviceDetailScreen(
-            deviceData: device,
-            isDirectMode: true,
-          ),
+          builder: (context) => isSensor
+              ? SensorDetailScreen(deviceData: device, isDirectMode: true)
+              : DeviceDetailScreen(deviceData: device, isDirectMode: true),
         ),
       );
     } else if (status == 'online') {
-      final bool isSensor =
-          device['id']?.toString().toUpperCase().startsWith('SU') ?? false;
       Navigator.push(
         context,
         MaterialPageRoute(

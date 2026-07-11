@@ -1,25 +1,45 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import '../../services/websocket_service.dart';
+import '../../services/esp_direct_service.dart';
 import '../../models/sensor_unit.dart';
+import '../sensor_config_screen.dart';
 
 // =============================================================================
 // SENSOR DETAIL SCREEN
 // =============================================================================
-// Screen for one WiFi sensor unit (device id starts with "SU"). Server mode
-// only. Subscribes to the unit over WebSocket, parses each device_basic_detail
-// push into a SensorUnit, and renders the unit info + each sensor reading.
+// Screen for one WiFi sensor unit (device id starts with "SU"). Two modes,
+// mirroring DeviceDetailScreen:
 //
-// Mirrors the valve screen's WebSocket lifecycle: listen to deviceDetailStream
-// filtered by this unit's id, subscribe to 'device_detail', and on dispose go
-// back to 'device_list' so the home list resumes. Read-only for now — the two
-// bottom buttons are stubs until the sensor edit/config REST is defined.
+//   - Server mode (isDirectMode = false): WebSocket through the cloud.
+//     Subscribes to 'device_detail'; parses each device_basic_detail push
+//     into a SensorUnit via SensorUnit.fromJson (keys: id / unit_name /
+//     unit_version / unit_last_seen / no_sensors / sensor_data).
+//
+//   - Direct mode (isDirectMode = true): Talks straight to the ESP32 over
+//     its AP via EspDirectService. Sends device_basic_info (initial +
+//     2-second poll, same cadence as the valve screen); listens on
+//     sensorUnitInfoStream for the sensor_unit_info reply and parses it via
+//     SensorUnit.fromDirectJson (keys: device_id / device_name / no_sensors
+//     / data). No lastSeen in this payload, so online status is simply the
+//     ESP32 connection state.
+//
+// On dispose, server mode resubscribes to 'device_list' so the home list
+// resumes; direct mode must NOT touch the cloud WebSocket. Both bottom
+// buttons are wired for direct mode only ("Change WiFi connection" →
+// set_device_wifi popup; "Sensor configuration" → SensorConfigScreen).
+// Name/tag Edit remains a stub until the sensor edit REST is defined.
 // =============================================================================
 
 class SensorDetailScreen extends StatefulWidget {
   final Map<String, dynamic> deviceData; // from the home list: id, name, ...
+  final bool isDirectMode;
 
-  const SensorDetailScreen({super.key, required this.deviceData});
+  const SensorDetailScreen({
+    super.key,
+    required this.deviceData,
+    this.isDirectMode = false,
+  });
 
   @override
   State<SensorDetailScreen> createState() => _SensorDetailScreenState();
@@ -28,26 +48,49 @@ class SensorDetailScreen extends StatefulWidget {
 class _SensorDetailScreenState extends State<SensorDetailScreen> {
   late final String _deviceId; // id we subscribe with / filter pushes against
   SensorUnit? _unit;           // latest push; null until the first one arrives
-  bool _wsConnected = false;
+  bool _wsConnected = false;   // cloud WS (server mode) or ESP32 WS (direct)
 
+  // -- Stream subscriptions (server mode) --
   StreamSubscription? _detailSub;
   StreamSubscription? _connectionSub;
+
+  // -- Stream subscriptions (direct mode) --
+  StreamSubscription? _espUnitInfoSub;
+  StreamSubscription? _espConnectionSub;
+  Timer? _espPollTimer;
+
+  // -- Shortcut --
+  bool get _isDirectMode => widget.isDirectMode;
 
   @override
   void initState() {
     super.initState();
     _deviceId = widget.deviceData['id']?.toString() ?? '';
-    _setupWebSocket();
+    // _unit starts null in BOTH modes, so no stale cloud state can leak into
+    // direct mode — the first sensor_unit_info reply is the source of truth.
+    if (_isDirectMode) {
+      _setupEspDirect();
+    } else {
+      _setupWebSocket();
+    }
   }
 
   @override
   void dispose() {
     _detailSub?.cancel();
     _connectionSub?.cancel();
-    WebSocketService.subscribeTo('device_list'); // resume home list updates
+    _espUnitInfoSub?.cancel();
+    _espConnectionSub?.cancel();
+    _espPollTimer?.cancel();
+    if (!_isDirectMode) {
+      WebSocketService.subscribeTo('device_list'); // resume home list updates
+    }
     super.dispose();
   }
 
+  // ---------------------------------------------------------------------------
+  // WebSocket setup (server mode)
+  // ---------------------------------------------------------------------------
   void _setupWebSocket() {
     _wsConnected = WebSocketService.isConnected;
 
@@ -64,9 +107,53 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
     WebSocketService.subscribeTo('device_detail', deviceId: _deviceId);
   }
 
-  // Online if reported within 30s. Depends on the server sending a parseable
-  // unit_last_seen (same dependency the valve has). Unparseable -> offline.
+  // ---------------------------------------------------------------------------
+  // ESP32 direct setup (direct mode)
+  // ---------------------------------------------------------------------------
+  void _setupEspDirect() {
+    final esp = EspDirectService.instance;
+    _wsConnected = esp.isConnected;
+
+    _espConnectionSub = esp.connectionStream.listen((connected) {
+      if (mounted) setState(() => _wsConnected = connected);
+    });
+
+    _espUnitInfoSub = esp.sensorUnitInfoStream.listen((data) {
+      if (!mounted) return;
+      if (data['device_id']?.toString() != _deviceId) return; // only THIS unit
+      setState(() => _unit = SensorUnit.fromDirectJson(data));
+      print('📱 ESP32 Direct: sensor_unit_info, '
+          '${data['no_sensors']} sensors');
+    });
+
+    // Initial request, then poll every 2 seconds (same cadence as the
+    // valve screen — the ESP32 replies per-request, it doesn't push).
+    _requestEspSensorData();
+    _espPollTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (mounted && esp.isAuthenticated) {
+        _requestEspSensorData();
+      }
+    });
+  }
+
+  void _requestEspSensorData() {
+    final esp = EspDirectService.instance;
+    if (!esp.isAuthenticated) return;
+
+    final userId = widget.deviceData['user_id']?.toString() ?? 'app_user';
+    final deviceName =
+        widget.deviceData['name']?.toString() ?? 'Sensor Unit';
+    esp.requestSensorUnitData(
+      userId: userId,
+      deviceId: _deviceId,
+      deviceName: deviceName,
+    );
+  }
+
+  // Online if reported within 30s (server mode only). Direct mode has no
+  // lastSeen field — being connected to the ESP32 IS the online signal.
   bool _isDeviceOnline(String? lastSeen) {
+    if (_isDirectMode) return _wsConnected;
     if (lastSeen == null || lastSeen.isEmpty || lastSeen.toUpperCase() == 'NULL') {
       return false;
     }
@@ -86,14 +173,17 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Vortex Labs'),
-        backgroundColor: const Color(0xFF3F51B5),
+        title: Text(_isDirectMode ? 'Direct Control' : 'Vortex Labs'),
+        backgroundColor:
+            _isDirectMode ? Colors.green[700] : const Color(0xFF3F51B5),
         foregroundColor: Colors.white,
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: Icon(
-              _wsConnected ? Icons.wifi : Icons.wifi_off,
+              _wsConnected
+                  ? (_isDirectMode ? Icons.settings_remote : Icons.wifi)
+                  : Icons.wifi_off,
               color: _wsConnected ? Colors.greenAccent : Colors.red,
             ),
           ),
@@ -126,7 +216,7 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
   }
 
   // ----- Unit info: Product Type / Name (Edit) / Status / Active Sensors -----
-Widget _buildUnitInfoCard(SensorUnit unit) {
+  Widget _buildUnitInfoCard(SensorUnit unit) {
     final bool online = _isDeviceOnline(unit.lastSeen);
     final Color statusColor = online ? Colors.green : Colors.red;
     final String displayName = unit.name.isNotEmpty
@@ -171,8 +261,12 @@ Widget _buildUnitInfoCard(SensorUnit unit) {
               decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle),
             ),
             const SizedBox(width: 6),
-            Text(online ? 'online' : 'offline',
-                style: TextStyle(color: statusColor, fontWeight: FontWeight.w500)),
+            Text(
+              online
+                  ? (_isDirectMode ? 'direct' : 'online')
+                  : 'offline',
+              style: TextStyle(color: statusColor, fontWeight: FontWeight.w500),
+            ),
           ])),
           const Divider(),
           _infoRow('Active Sensors', Text(
@@ -225,7 +319,7 @@ Widget _buildUnitInfoCard(SensorUnit unit) {
     );
   }
 
-  // ----- Bottom buttons (stubs until sensor edit/config REST is defined) -----
+  // ----- Bottom buttons (stubs until WiFi popup / config screen are wired) -----
   Widget _buildBottomButtons() {
     return Column(
       children: [
@@ -253,22 +347,198 @@ Widget _buildUnitInfoCard(SensorUnit unit) {
   }
 
   ButtonStyle _buttonStyle() => ElevatedButton.styleFrom(
-        backgroundColor: const Color(0xFF3F51B5),
+        backgroundColor:
+            _isDirectMode ? Colors.green[700] : const Color(0xFF3F51B5),
         foregroundColor: Colors.white,
         padding: const EdgeInsets.symmetric(vertical: 16),
         textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       );
 
-  // ----- Action stubs — wire up when the sensor edit/config REST is ready -----
+  // ----- Action stubs — name/tag editing needs the sensor edit REST
+  //       endpoint (server side, not defined yet). -----
   void _onEditName() => _todo('Rename sensor unit');
   void _onEditTag(Sensor sensor) => _todo('Rename "${sensor.name}"');
-  void _onChangeWifi() => _todo('Change WiFi connection');
-  void _onSensorConfig() => _todo('Sensor configuration');
+
+  /// get/set_sensor_config are AP-mode operations — direct mode only.
+  /// In server mode, tell the user to connect to the unit's hotspot.
+  void _onSensorConfig() {
+    if (!_isDirectMode) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'Connect to the sensor unit\'s hotspot to configure sensors.'),
+        ),
+      );
+      return;
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) =>
+            SensorConfigScreen(deviceData: widget.deviceData),
+      ),
+    );
+  }
 
   void _todo(String label) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('$label — not wired up yet')),
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // WiFi Credentials Dialog (Direct mode)
+  // -------------------------------------------------------------------------
+  /// set_device_wifi is an AP-mode operation — the sensor unit must be the
+  /// connected WiFi network. In server mode, tell the user to connect to
+  /// the unit's hotspot instead of showing the dialog.
+  void _onChangeWifi() {
+    if (!_isDirectMode) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'Connect to the sensor unit\'s hotspot to change its WiFi.'),
+        ),
+      );
+      return;
+    }
+    _showWifiCredentialsDialog();
+  }
+
+  /// Shows a popup to enter home WiFi SSID and password, then sends
+  /// set_device_wifi (sensor unit event — NOT the valve's set_valve_wifi)
+  /// to the connected ESP32. Architecture Doc v3 - Sensor Unit /
+  /// Details Screen - Data editing.
+  void _showWifiCredentialsDialog() {
+    final ssidController = TextEditingController();
+    final passwordController = TextEditingController();
+    bool obscurePassword = true;
+    bool isSending = false;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.wifi, color: Color(0xFF3F51B5)),
+              SizedBox(width: 10),
+              Text('Set Home WiFi'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Enter your home WiFi credentials. The sensor unit will restart and connect to this network.',
+                style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: ssidController,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: 'WiFi Name (SSID)',
+                  hintText: 'Enter your home WiFi name',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.wifi),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: passwordController,
+                obscureText: obscurePassword,
+                decoration: InputDecoration(
+                  labelText: 'WiFi Password',
+                  hintText: 'Enter WiFi password',
+                  border: const OutlineInputBorder(),
+                  prefixIcon: const Icon(Icons.lock),
+                  suffixIcon: IconButton(
+                    icon: Icon(obscurePassword
+                        ? Icons.visibility
+                        : Icons.visibility_off),
+                    onPressed: () {
+                      setDialogState(
+                          () => obscurePassword = !obscurePassword);
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSending ? null : () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton.icon(
+              onPressed: isSending
+                  ? null
+                  : () {
+                      final ssid = ssidController.text.trim();
+                      final password = passwordController.text;
+
+                      if (ssid.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Please enter WiFi name'),
+                          ),
+                        );
+                        return;
+                      }
+
+                      if (!EspDirectService.instance.isAuthenticated) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                                'Not connected to sensor unit. Go back and reconnect.'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                        return;
+                      }
+
+                      setDialogState(() => isSending = true);
+
+                      EspDirectService.instance.setSensorUnitWifi(
+                        ssid: ssid,
+                        password: password,
+                      );
+
+                      print("📤 ESP32: set_device_wifi ssid=$ssid");
+
+                      // ESP32 will restart — connection will be lost
+                      Future.delayed(const Duration(seconds: 3), () {
+                        if (mounted) {
+                          Navigator.pop(dialogContext);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'WiFi credentials sent! Sensor unit will restart and connect to your home WiFi.',
+                              ),
+                              backgroundColor: Colors.green,
+                              duration: Duration(seconds: 5),
+                            ),
+                          );
+                        }
+                      });
+                    },
+              icon: isSending
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.save),
+              label: Text(isSending ? 'Sending...' : 'Save'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

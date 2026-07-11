@@ -10,13 +10,20 @@ import 'package:web_socket_channel/status.dart' as status;
 ///   - websocket_state_fn.c: Event processing, authentication, state updates
 ///   - WEBSOCKET_MSG_FLOW.md: Message formats and flow
 ///
-/// Connection Flow:
+/// Connection Flow (Valve  — VA-):
 ///   1. Connect to ws://<ip>:<port>/ws
 ///   2. Authenticate with request_device_info + passkey
 ///   3. ESP32 responds with device_info (device_id)
 ///   4. Request valve data with device_basic_info
 ///   5. Control valve with set_valve_basic
 ///   6. Configure WiFi with set_valve_wifi
+///
+/// Connection Flow (Sensor Unit — SU-):
+///   1-3. Same as valve (connect + request_device_info + device_info)
+///   4. Request unit data with device_basic_info (same request event)
+///   5. Device responds with sensor_unit_info (instead of valve_data)
+///   6. Configure WiFi with set_device_wifi (NOT set_valve_wifi)
+///   7. Read/write sensor config with get_sensor_config / set_sensor_config
 class EspDirectService {
   static EspDirectService? _instance;
   static EspDirectService get instance => _instance ??= EspDirectService._();
@@ -33,6 +40,8 @@ class EspDirectService {
   final _connectionStateController = StreamController<bool>.broadcast();
   final _deviceInfoController = StreamController<Map<String, dynamic>>.broadcast();
   final _valveDataController = StreamController<Map<String, dynamic>>.broadcast();
+  final _sensorUnitInfoController = StreamController<Map<String, dynamic>>.broadcast();
+  final _sensorConfigController = StreamController<Map<String, dynamic>>.broadcast();
   final _motorCalibrationController = StreamController<Map<String, dynamic>>.broadcast();
   final _errorController = StreamController<Map<String, dynamic>>.broadcast();
   
@@ -40,6 +49,8 @@ class EspDirectService {
   Stream<bool> get connectionStream => _connectionStateController.stream;
   Stream<Map<String, dynamic>> get deviceInfoStream => _deviceInfoController.stream;
   Stream<Map<String, dynamic>> get valveDataStream => _valveDataController.stream;
+  Stream<Map<String, dynamic>> get sensorUnitInfoStream => _sensorUnitInfoController.stream;
+  Stream<Map<String, dynamic>> get sensorConfigStream => _sensorConfigController.stream;
   Stream<Map<String, dynamic>> get motorCalibrationStream => _motorCalibrationController.stream;
   Stream<Map<String, dynamic>> get errorStream => _errorController.stream;
   
@@ -137,6 +148,8 @@ class EspDirectService {
   /// ESP32 sends these event types:
   ///   - device_info: After successful authentication
   ///   - valve_data: Full valve state (controller, position, limits, error)
+  ///   - sensor_unit_info: Sensor unit data (unit name, sensor readings)
+  ///   - get_sensor_config: Sensor configuration (types + tag names, no values)
   ///   - valve_error: Error notification broadcast
   /// 
   /// See: websocket_state_fn.c → send_device_info(), send_device_data()
@@ -168,6 +181,35 @@ class EspDirectService {
         // See: websocket_state_fn.c → send_device_data()
         case 'valve_data':
           _valveDataController.add(Map<String, dynamic>.from(data));
+          break;
+        
+        // ── Sensor unit data ──
+        // Sensor Unit (SU-) sends this in response to device_basic_info
+        // request (the same request event the valve uses).
+        // Architecture Doc v3 - Sensor Unit / Details Screen - Data visualizing:
+        // Format: {"event":"sensor_unit_info","device_id":"SU202601003",
+        //          "device_name":"garden 1","timestamp":"...",
+        //          "no_sensors":"3","data":"[{...},{...}]"}
+        // NOTE: keys differ from the cloud device_basic_detail payload —
+        //       device_id/device_name/data here vs id/unit_name/sensor_data
+        //       on the cloud path. `data` is an ESCAPED JSON STRING, same as
+        //       the cloud sensor_data field. No version / last_seen fields.
+        case 'sensor_unit_info':
+          _sensorUnitInfoController.add(Map<String, dynamic>.from(data));
+          break;
+        
+        // ── Sensor configuration data ──
+        // Sensor Unit sends this in response to a get_sensor_config request.
+        // Architecture Doc v3 - Sensor Configuration Process:
+        // Format: {"event":"get_sensor_config","timestamp":"...",
+        //          "device_id":"SU202505001","no_sensors":"3",
+        //          "sensor_data":"[{sensor_id,sensor_type,sensor_name},...]"}
+        // NOTE: sensor_data is an ESCAPED JSON STRING and — unlike
+        //       sensor_unit_info — carries NO sensor_value fields.
+        //       First 2 entries (S00/S01) are in-build sensors: the config
+        //       screen must render them read-only.
+        case 'get_sensor_config':
+          _sensorConfigController.add(Map<String, dynamic>.from(data));
           break;
         
         // ── Motor calibration data ──
@@ -245,7 +287,7 @@ class EspDirectService {
   }
 
   // ============================================================
-  // REQUEST VALVE DATA
+  // REQUEST DEVICE DATA (valve + sensor unit)
   // ============================================================
 
   /// Request full valve state from ESP32
@@ -278,6 +320,44 @@ class EspDirectService {
         'user_id': userId,
         'device_id': deviceId,
         'device_name': deviceName ?? 'Valve',
+      },
+    });
+  }
+
+  /// Request sensor unit data from ESP32
+  /// 
+  /// Same `device_basic_info` request event as the valve — the DEVICE
+  /// decides the response type. A Sensor Unit (SU-) replies with a
+  /// `sensor_unit_info` event; listen on sensorUnitInfoStream.
+  /// 
+  /// Architecture Doc v3 - Sensor Unit / Details Screen:
+  /// ```json
+  /// {
+  ///   "event": "device_basic_info",
+  ///   "timestamp": "2025-01-15T10:30:00Z",
+  ///   "data": {
+  ///     "user_id": "uid001",
+  ///     "device_id": "SU202505001",
+  ///     "device_name": "garden 1"
+  ///   }
+  /// }
+  /// ```
+  void requestSensorUnitData({
+    required String userId,
+    required String deviceId,
+    String? deviceName,
+  }) {
+    if (!_isAuthenticated) {
+      print('⚠️ ESP32: Not authenticated. Call authenticate() first.');
+      return;
+    }
+    _send({
+      'event': 'device_basic_info',
+      'timestamp': DateTime.now().toUtc().toIso8601String(),
+      'data': {
+        'user_id': userId,
+        'device_id': deviceId,
+        'device_name': deviceName ?? 'Sensor Unit',
       },
     });
   }
@@ -452,6 +532,9 @@ class EspDirectService {
   /// }
   /// ```
   /// 
+  /// NOTE: This is the VALVE event name. The Sensor Unit uses
+  ///       `set_device_wifi` — see setSensorUnitWifi() below.
+  /// 
   /// WARNING: ESP32 will restart after saving new credentials!
   ///          The WebSocket connection will be lost.
   void setWifiCredentials({
@@ -470,6 +553,110 @@ class EspDirectService {
         'ssid': ssid,
         'password': password,
       },
+    });
+  }
+
+  /// Set WiFi credentials for a SENSOR UNIT's STA mode
+  /// 
+  /// Same payload shape as the valve, but the Sensor Unit firmware
+  /// listens for `set_device_wifi` instead of `set_valve_wifi`.
+  /// 
+  /// Architecture Doc v3 - Sensor Unit / Details Screen - Data editing:
+  /// ```json
+  /// {
+  ///   "event": "set_device_wifi",
+  ///   "timestamp": "2025-01-15T10:30:00Z",
+  ///   "device_id": "SU202505001",
+  ///   "wifi_data": {
+  ///     "ssid": "myNetWork",
+  ///     "password": "1234"
+  ///   }
+  /// }
+  /// ```
+  /// 
+  /// WARNING: ESP32 will restart after saving new credentials!
+  ///          The WebSocket connection will be lost.
+  void setSensorUnitWifi({
+    required String ssid,
+    required String password,
+  }) {
+    if (!_isAuthenticated) {
+      print('⚠️ ESP32: Not authenticated. Call authenticate() first.');
+      return;
+    }
+    _send({
+      'event': 'set_device_wifi',
+      'timestamp': DateTime.now().toUtc().toIso8601String(),
+      'device_id': _connectedDeviceId ?? '',
+      'wifi_data': {
+        'ssid': ssid,
+        'password': password,
+      },
+    });
+  }
+
+  // ============================================================
+  // SENSOR CONFIGURATION (Sensor Unit only)
+  // ============================================================
+
+  /// Request sensor configuration from the Sensor Unit (initial load)
+  /// 
+  /// Called once when the Sensor Configuration screen opens. The unit
+  /// replies with a `get_sensor_config` event (listen on
+  /// sensorConfigStream) containing sensor_id / sensor_type /
+  /// sensor_name per sensor — no values.
+  /// 
+  /// Architecture Doc v3 - Sensor Configuration Process:
+  /// ```json
+  /// {
+  ///   "event": "get_sensor_config",
+  ///   "timestamp": "2025-01-15T10:30:00Z",
+  ///   "device_id": "SU202505001"
+  /// }
+  /// ```
+  void requestSensorConfig() {
+    if (!_isAuthenticated) {
+      print('⚠️ ESP32: Not authenticated. Call authenticate() first.');
+      return;
+    }
+    _send({
+      'event': 'get_sensor_config',
+      'timestamp': DateTime.now().toUtc().toIso8601String(),
+      'device_id': _connectedDeviceId ?? '',
+    });
+  }
+
+  /// Save sensor configuration to the Sensor Unit
+  /// 
+  /// Called when the user taps Save on the Sensor Configuration screen.
+  /// `sensors` is the FULL list (including the read-only in-build S00/S01
+  /// entries, unchanged), each map holding sensor_id / sensor_type /
+  /// sensor_name. Encoded to a JSON STRING to match the wire format —
+  /// same escaped-string convention the unit uses when sending.
+  /// 
+  /// Architecture Doc v3 - Sensor Configuration Process:
+  /// ```json
+  /// {
+  ///   "event": "set_sensor_config",
+  ///   "timestamp": "2025-01-15T10:30:00Z",
+  ///   "device_id": "SU202505001",
+  ///   "no_sensors": "3",
+  ///   "sensor_data": "[{\"sensor_id\":\"S00\",...},...]"
+  /// }
+  /// ```
+  void setSensorConfig({
+    required List<Map<String, dynamic>> sensors,
+  }) {
+    if (!_isAuthenticated) {
+      print('⚠️ ESP32: Not authenticated. Call authenticate() first.');
+      return;
+    }
+    _send({
+      'event': 'set_sensor_config',
+      'timestamp': DateTime.now().toUtc().toIso8601String(),
+      'device_id': _connectedDeviceId ?? '',
+      'no_sensors': sensors.length.toString(), // spec sends this as a String
+      'sensor_data': jsonEncode(sensors),      // escaped JSON string on the wire
     });
   }
 
@@ -516,6 +703,8 @@ class EspDirectService {
     _connectionStateController.close();
     _deviceInfoController.close();
     _valveDataController.close();
+    _sensorUnitInfoController.close();
+    _sensorConfigController.close();
     _motorCalibrationController.close();
     _errorController.close();
   }

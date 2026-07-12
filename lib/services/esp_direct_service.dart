@@ -102,15 +102,21 @@ class EspDirectService {
       
       print('✅ ESP32: WebSocket connected!');
       
-      _channel!.stream.listen(
+      // Capture THIS channel so the callbacks below can tell whether they
+      // belong to the current connection. During a forced reconnect the
+      // OLD socket's onDone/onError can fire AFTER the new one is already
+      // up — without this guard that stale event would wrongly tear down
+      // the fresh connection (_handleDisconnect on a live link).
+      final channel = _channel!;
+      channel.stream.listen(
         _handleMessage,
         onError: (error) {
           print('❌ ESP32: WebSocket error: $error');
-          _handleDisconnect();
+          if (_channel == channel) _handleDisconnect();
         },
         onDone: () {
           print('🔌 ESP32: WebSocket closed');
-          _handleDisconnect();
+          if (_channel == channel) _handleDisconnect();
         },
       );
       

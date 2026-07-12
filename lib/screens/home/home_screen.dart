@@ -63,6 +63,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String? _espConnectedDeviceId;
   bool _isEspConnecting = false;
 
+  // -- Resume re-check (see _resumeWifiRecheck) --
+  Timer? _wifiRecheckTimer;
+  int _wifiRecheckCount = 0;
+
   // -- Debug terminal --
   bool _showDebugPanel = false;
   final List<String> _debugLogs = [];
@@ -105,6 +109,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _espDeviceInfoSub?.cancel();
     _espValveDataSub?.cancel();
     _espErrorSub?.cancel();
+    _wifiRecheckTimer?.cancel();
     _debugScrollController.dispose();
     _espIpController.dispose();
     _espPortController.dispose();
@@ -115,18 +120,42 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _checkWifiConnection();
-      // If we were offline and we're not on a valve hotspot, try to
-      // reconnect to the server WebSocket
-      if (_isOfflineMode && !_isEspApMode) {
-        WebSocketService.resetReconnectAttempts();
-        WebSocketService.connect().then((connected) {
-          if (connected) {
-            WebSocketService.subscribeTo('device_list');
-          }
-        });
-      }
+      _resumeWifiRecheck();
     }
+  }
+
+  /// Runs after every app resume (phone woke up / came back from another
+  /// app). Two problems this solves:
+  ///
+  ///   1. ZOMBIE SOCKET — while the phone slept, Android usually killed
+  ///      the TCP link to the ESP32 but no close event ever reached us,
+  ///      so EspDirectService.isConnected still says true. The old
+  ///      "reconnect only if !isConnected" check was fooled by this and
+  ///      the app kept talking into a dead socket. Fix: FORCE a clean
+  ///      reconnect whenever we're on a Vortex hotspot at resume.
+  ///
+  ///   2. SSID RACE — WiFi takes a few seconds to re-associate after
+  ///      sleep, so the first check often reads SSID null and gave up
+  ///      (the check was strictly one-shot). Fix: retry every 3 s, up
+  ///      to 4 times, stopping early once either connection path is up.
+  void _resumeWifiRecheck() {
+    _wifiRecheckTimer?.cancel();
+    _wifiRecheckCount = 0;
+
+    _checkWifiConnection(forceEspReconnect: true);
+
+    _wifiRecheckTimer = Timer.periodic(const Duration(seconds: 3), (t) {
+      if (!mounted ||
+          _isEspApMode || // Vortex AP detected → check already handled it
+          WebSocketService.isConnected || // normal WiFi path is back up
+          _wifiRecheckCount >= 4) {
+        t.cancel();
+        return;
+      }
+      _wifiRecheckCount++;
+      _log("WiFi: resume re-check $_wifiRecheckCount/4 ...");
+      _checkWifiConnection(forceEspReconnect: true);
+    });
   }
 
   // ===========================================================================
@@ -301,7 +330,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // SECTION 6: WIFI CHECK
   // ===========================================================================
 
-  Future<void> _checkWifiConnection() async {
+  /// [forceEspReconnect] is passed true from the resume path: after phone
+  /// sleep, EspDirectService.isConnected often reports true for a socket
+  /// that is actually dead (Android killed the TCP link without a close
+  /// event), so "already connected" cannot be trusted at resume time.
+  Future<void> _checkWifiConnection({bool forceEspReconnect = false}) async {
     try {
       // Step 6.1: Make sure we have location permission (needed to read SSID)
       final locationStatus = await Permission.location.status;
@@ -313,7 +346,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         }
       }
 
-      // Step 6.2: Read SSID and detect "Vortex_VA…" hotspot
+      // Step 6.2: Read SSID and detect a Vortex device hotspot.
+      // Valves broadcast "Vortex_VA…", sensor units "Vortex_SU…" — match
+      // the shared "Vortex_" prefix so BOTH device types trigger direct
+      // mode. (Was startsWith('Vortex_VA'), which silently ignored
+      // sensor unit hotspots — nothing ever showed as direct connected.)
       final ssid = await _networkInfo.getWifiName();
       final cleanSsid = ssid?.replaceAll('"', '');
 
@@ -321,15 +358,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         setState(() {
           _connectedSsid = cleanSsid;
           _isEspApMode =
-              cleanSsid != null && cleanSsid.startsWith('Vortex_VA');
+              cleanSsid != null && cleanSsid.startsWith('Vortex_');
         });
       }
 
       _log("WiFi SSID: ${cleanSsid ?? 'null'} | AP Mode: $_isEspApMode");
 
-      // Step 6.3: If on a valve AP, kick off ESP32 direct connect
-      if (_isEspApMode && !EspDirectService.instance.isConnected) {
-        _connectToEsp32();
+      // Step 6.3: If on a Vortex device AP, make sure the direct link is
+      // genuinely alive. Normal path: connect when not connected. Resume
+      // path (forceEspReconnect): reconnect EVEN IF isConnected says true,
+      // because after sleep that flag routinely lies (zombie socket).
+      // connect() internally disconnects first, so this is always clean.
+      if (_isEspApMode) {
+        if (!EspDirectService.instance.isConnected) {
+          _connectToEsp32();
+        } else if (forceEspReconnect) {
+          _log("ESP32: Resume on Vortex AP — forcing reconnect "
+              "(old socket may be dead)");
+          _connectToEsp32();
+        }
       }
 
       // Step 6.4: If on normal WiFi but server still isn't connected,
@@ -358,12 +405,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void _setupEspListeners() {
     final esp = EspDirectService.instance;
 
-    // 7.1  Connection state stream — auto-authenticate on connect
+    // 7.1  Connection state stream — auto-authenticate on connect,
+    //      clear ALL stale direct-mode state on disconnect
     _espConnectionSub = esp.connectionStream.listen((connected) {
       if (mounted) {
-        setState(() {});
         _log("ESP32 WS: ${connected ? 'CONNECTED' : 'DISCONNECTED'}");
         if (connected) {
+          setState(() {});
           final userId =
               AuthService.currentUser?['id']?.toString() ?? 'app_user';
           _log(
@@ -372,6 +420,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             passkey: _espPasskeyController.text,
             userId: userId,
           );
+        } else {
+          // Connection died (phone sleep, WiFi drop, ESP32 restart).
+          // Clear EVERYTHING the last session left behind, otherwise:
+          //   - _isEspConnecting can stay locked true forever (it was
+          //     only reset on device_info arrival), making every future
+          //     _connectToEsp32() call return immediately
+          //   - devices keep their green _esp_connected flag for a link
+          //     that no longer exists
+          setState(() {
+            _isEspConnecting = false;
+            _espConnectedDeviceId = null;
+            for (int i = 0; i < _devices.length; i++) {
+              if (_devices[i]['_esp_connected'] == true) {
+                _devices[i] = Map<String, dynamic>.from(_devices[i]);
+                _devices[i]['_esp_connected'] = false;
+                _devices[i]['_esp_is_user_device'] = false;
+              }
+            }
+          });
         }
       }
     });
@@ -402,10 +469,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         });
 
         if (isUserDevice) {
-          _showSnackBar('✅ Connected to your valve: $deviceId');
+          _showSnackBar('✅ Connected to your device: $deviceId');
         } else {
           _showSnackBar(
-              '⚠️ This valve ($deviceId) is not assigned to your account');
+              '⚠️ This device ($deviceId) is not assigned to your account');
         }
       }
     });

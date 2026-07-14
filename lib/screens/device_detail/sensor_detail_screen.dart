@@ -32,10 +32,12 @@ import '../sensor_config_screen.dart';
 // dummy data. Defaults to false — production behavior is unchanged.
 //
 // On dispose, server mode resubscribes to 'device_list' so the home list
-// resumes; direct mode must NOT touch the cloud WebSocket. Both bottom
-// buttons are wired for direct mode only ("Change WiFi connection" →
-// set_device_wifi popup; "Sensor configuration" → SensorConfigScreen).
-// Name/tag Edit remains a stub until the sensor edit REST is defined.
+// resumes; direct mode must NOT touch the cloud WebSocket. Bottom buttons:
+// "Change WiFi connection" (→ set_device_wifi popup) renders in DIRECT MODE
+// ONLY — it doesn't exist in server mode; "Sensor configuration" (→
+// SensorConfigScreen) always renders but only navigates in direct mode.
+// Unit name Edit remains a stub until the sensor edit REST is defined.
+// Sensor tag names are read-only.
 // =============================================================================
 
 class SensorDetailScreen extends StatefulWidget {
@@ -310,17 +312,13 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
               style: const TextStyle(fontWeight: FontWeight.w500),
             )),
             const Divider(),
-            _infoRow('Tag name', Row(children: [
-              TextButton(
-                onPressed: () => _onEditTag(sensor),
-                child: const Text('Edit', style: TextStyle(color: Colors.blue)),
-              ),
-              Text(sensor.name.isNotEmpty ? sensor.name : '—',
-                  style: const TextStyle(fontWeight: FontWeight.w500)),
-            ])),
+            _infoRow('Tag name', Text(
+              sensor.name.isNotEmpty ? sensor.name : '—',
+              style: const TextStyle(fontWeight: FontWeight.w500),
+            )),
             const Divider(),
             _infoRow('Sensor value', Text(
-              sensor.value.isNotEmpty ? sensor.value : '—',
+              _formatSensorValue(sensor),
               style: const TextStyle(fontWeight: FontWeight.w600),
             )),
           ],
@@ -343,20 +341,42 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
     );
   }
 
-  // ----- Bottom buttons (stubs until WiFi popup / config screen are wired) -----
+  // ----- Sensor value display formatting -----
+  // Numeric readings are shown with exactly 2 decimal places ("24.5" →
+  // "24.50", "61" → "61.00"). Non-numeric values pass through unchanged
+  // (the format varies per sensor, so don't break anything exotic).
+  // Unit suffix by sensor type: temperature → °C, humidity → %.
+  String _formatSensorValue(Sensor sensor) {
+    final raw = sensor.value.trim();
+    if (raw.isEmpty) return '—';
+
+    final parsed = double.tryParse(raw);
+    final text = parsed != null ? parsed.toStringAsFixed(2) : raw;
+
+    final type = sensor.type.toLowerCase();
+    if (type.contains('temp')) return '$text °C';
+    if (type.contains('humid')) return '$text %';
+    return text;
+  }
+
+  // ----- Bottom buttons: Change WiFi (direct mode only) + Sensor config -----
   Widget _buildBottomButtons() {
     return Column(
       children: [
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            onPressed: _onChangeWifi,
-            icon: const Icon(Icons.wifi),
-            label: const Text('Change WiFi connection'),
-            style: _buttonStyle(),
+        // set_device_wifi is an AP-mode operation, so the button simply
+        // doesn't exist in server mode (no dead button + snackbar).
+        if (_isDirectMode) ...[
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _onChangeWifi,
+              icon: const Icon(Icons.wifi),
+              label: const Text('Change WiFi connection'),
+              style: _buttonStyle(),
+            ),
           ),
-        ),
-        const SizedBox(height: 12),
+          const SizedBox(height: 12),
+        ],
         SizedBox(
           width: double.infinity,
           child: ElevatedButton.icon(
@@ -379,10 +399,10 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       );
 
-  // ----- Action stubs — name/tag editing needs the sensor edit REST
-  //       endpoint (server side, not defined yet). -----
+  // ----- Action stubs — unit name editing needs the sensor edit REST
+  //       endpoint (server side, not defined yet). Sensor tag names are
+  //       read-only in this screen. -----
   void _onEditName() => _todo('Rename sensor unit');
-  void _onEditTag(Sensor sensor) => _todo('Rename "${sensor.name}"');
 
   /// get/set_sensor_config are AP-mode operations — direct mode only.
   /// In server mode, tell the user to connect to the unit's hotspot.
@@ -420,21 +440,11 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
   // -------------------------------------------------------------------------
   // WiFi Credentials Dialog (Direct mode)
   // -------------------------------------------------------------------------
-  /// set_device_wifi is an AP-mode operation — the sensor unit must be the
-  /// connected WiFi network. In server mode, tell the user to connect to
-  /// the unit's hotspot instead of showing the dialog. Preview mode shows
-  /// the dialog too (safe: the Save button checks isAuthenticated, which is
-  /// false in preview, so nothing is ever sent).
+  /// The button that reaches this only renders in direct mode, so no
+  /// server-mode guard is needed. In preview + direct mode the dialog opens
+  /// too (safe: the Save button checks isAuthenticated, which is false in
+  /// preview, so nothing is ever sent).
   void _onChangeWifi() {
-    if (!_isDirectMode && !_isPreviewMode) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-              'Connect to the sensor unit\'s hotspot to change its WiFi.'),
-        ),
-      );
-      return;
-    }
     _showWifiCredentialsDialog();
   }
 

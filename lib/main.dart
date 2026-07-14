@@ -1,3 +1,4 @@
+import 'package:flutter/widget_previews.dart';
 import 'package:flutter/material.dart';
 import 'screens/main/main_screen.dart';
 import 'services/auth_service.dart';
@@ -29,4 +30,12 @@ class VortaxLabsApp extends StatelessWidget {
       home: const MainScreen(),
     );
   }
+}
+
+@Preview(
+  name: 'Vortax Labs App',
+  size: Size(390, 844),
+)
+Widget vortaxLabsAppPreview() {
+  return const VortaxLabsApp();
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/widget_previews.dart';
 import 'dart:async';
 import '../../services/websocket_service.dart';
 import '../../services/esp_direct_service.dart';
@@ -24,6 +25,12 @@ import '../sensor_config_screen.dart';
 //     / data). No lastSeen in this payload, so online status is simply the
 //     ESP32 connection state.
 //
+// Preview mode (previewMode = true): used ONLY by the @Preview builders at
+// the bottom of this file for the VS Code Flutter Widget Preview panel.
+// Skips ALL networking (no WebSocketService, no EspDirectService, no poll
+// timer) and seeds _unit directly from deviceData so the GUI renders with
+// dummy data. Defaults to false — production behavior is unchanged.
+//
 // On dispose, server mode resubscribes to 'device_list' so the home list
 // resumes; direct mode must NOT touch the cloud WebSocket. Both bottom
 // buttons are wired for direct mode only ("Change WiFi connection" →
@@ -34,11 +41,13 @@ import '../sensor_config_screen.dart';
 class SensorDetailScreen extends StatefulWidget {
   final Map<String, dynamic> deviceData; // from the home list: id, name, ...
   final bool isDirectMode;
+  final bool previewMode; // widget-preview only — bypasses all networking
 
   const SensorDetailScreen({
     super.key,
     required this.deviceData,
     this.isDirectMode = false,
+    this.previewMode = false,
   });
 
   @override
@@ -59,13 +68,23 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
   StreamSubscription? _espConnectionSub;
   Timer? _espPollTimer;
 
-  // -- Shortcut --
+  // -- Shortcuts --
   bool get _isDirectMode => widget.isDirectMode;
+  bool get _isPreviewMode => widget.previewMode;
 
   @override
   void initState() {
     super.initState();
     _deviceId = widget.deviceData['id']?.toString() ?? '';
+
+    // Preview mode: no WebSocket, no ESP32, no polling. Seed the unit
+    // straight from deviceData (cloud-style keys) so the UI renders.
+    if (_isPreviewMode) {
+      _unit = SensorUnit.fromJson(widget.deviceData);
+      _wsConnected = true; // green connection icon in the app bar
+      return;
+    }
+
     // _unit starts null in BOTH modes, so no stale cloud state can leak into
     // direct mode — the first sensor_unit_info reply is the source of truth.
     if (_isDirectMode) {
@@ -82,7 +101,8 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
     _espUnitInfoSub?.cancel();
     _espConnectionSub?.cancel();
     _espPollTimer?.cancel();
-    if (!_isDirectMode) {
+    // Preview mode never subscribed, so it must not touch the singleton here.
+    if (!_isDirectMode && !_isPreviewMode) {
       WebSocketService.subscribeTo('device_list'); // resume home list updates
     }
     super.dispose();
@@ -313,7 +333,11 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label, style: const TextStyle(color: Colors.grey)),
+        Text(label,
+            style: const TextStyle(
+              color: Colors.black,
+              fontWeight: FontWeight.bold,
+            )),
         trailing,
       ],
     );
@@ -362,7 +386,13 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
 
   /// get/set_sensor_config are AP-mode operations — direct mode only.
   /// In server mode, tell the user to connect to the unit's hotspot.
+  /// Preview mode never navigates — SensorConfigScreen would try to talk
+  /// to EspDirectService.
   void _onSensorConfig() {
+    if (_isPreviewMode) {
+      _todo('Sensor configuration (preview)');
+      return;
+    }
     if (!_isDirectMode) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -392,9 +422,11 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
   // -------------------------------------------------------------------------
   /// set_device_wifi is an AP-mode operation — the sensor unit must be the
   /// connected WiFi network. In server mode, tell the user to connect to
-  /// the unit's hotspot instead of showing the dialog.
+  /// the unit's hotspot instead of showing the dialog. Preview mode shows
+  /// the dialog too (safe: the Save button checks isAuthenticated, which is
+  /// false in preview, so nothing is ever sent).
   void _onChangeWifi() {
-    if (!_isDirectMode) {
+    if (!_isDirectMode && !_isPreviewMode) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
@@ -541,4 +573,61 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
       ),
     );
   }
+}
+
+// =============================================================================
+// WIDGET PREVIEWS (VS Code Flutter Widget Preview panel only)
+// =============================================================================
+// previewMode: true bypasses all networking and seeds the unit straight from
+// deviceData. last_seen is set to "now" at build time so the status dot shows
+// online/green — a hardcoded timestamp would fail the 30-second check.
+// =============================================================================
+
+@Preview(
+  name: 'Sensor Detail — Server mode',
+  size: Size(390, 844),
+)
+Widget sensorDetailScreenPreview() {
+  final now = DateTime.now().toUtc().toIso8601String();
+  return MaterialApp(
+    debugShowCheckedModeBanner: false,
+    home: SensorDetailScreen(
+      previewMode: true,
+      deviceData: {
+        'id': 'SU202601003',
+        'unit_name': 'Greenhouse Sensor',
+        'unit_version': '1.0.0',
+        'unit_last_seen': now,
+        'last_seen': now,
+        'no_sensors': '2',
+        'sensor_data':
+            '[{"sensor_id":"S00","sensor_type":"Temperature","sensor_name":"Temperature","sensor_value":"24.5"},{"sensor_id":"S01","sensor_type":"Humidity","sensor_name":"Humidity","sensor_value":"61"}]',
+      },
+    ),
+  );
+}
+
+@Preview(
+  name: 'Sensor Detail — Direct mode',
+  size: Size(390, 844),
+)
+Widget sensorDetailScreenDirectPreview() {
+  final now = DateTime.now().toUtc().toIso8601String();
+  return MaterialApp(
+    debugShowCheckedModeBanner: false,
+    home: SensorDetailScreen(
+      previewMode: true,
+      isDirectMode: true,
+      deviceData: {
+        'id': 'SU202601003',
+        'unit_name': 'Greenhouse Sensor',
+        'unit_version': '1.0.0',
+        'unit_last_seen': now,
+        'last_seen': now,
+        'no_sensors': '2',
+        'sensor_data':
+            '[{"sensor_id":"S00","sensor_type":"Temperature","sensor_name":"Temperature","sensor_value":"24.5"},{"sensor_id":"S01","sensor_type":"Humidity","sensor_name":"Humidity","sensor_value":"61"}]',
+      },
+    ),
+  );
 }

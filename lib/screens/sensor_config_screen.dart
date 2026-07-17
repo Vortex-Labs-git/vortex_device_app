@@ -95,11 +95,18 @@ class _SensorConfigScreenState extends State<SensorConfigScreen> {
   // ============================================================
 
   @override
-  void initState() {
-    super.initState();
-    _setupEspListener();
-    _requestInitialConfig();
-  }
+    void initState() {
+      super.initState();
+      _setupEspListener();
+      // Deferred one frame: _requestInitialConfig shows a snackbar when the
+      // unit isn't authenticated, and ScaffoldMessenger.of(context) cannot be
+      // called during initState. Post-frame, the context is fully wired and
+      // the listener above is already subscribed, so no reply can be missed.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _requestInitialConfig();
+      });
+    }
 
   @override
   void dispose() {

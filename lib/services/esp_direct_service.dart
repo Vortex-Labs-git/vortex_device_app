@@ -662,7 +662,7 @@ class EspDirectService {
       'timestamp': DateTime.now().toUtc().toIso8601String(),
       'device_id': _connectedDeviceId ?? '',
       'no_sensors': sensors.length.toString(), // spec sends this as a String
-      'sensor_data': jsonEncode(sensors),      // escaped JSON string on the wire
+      'sensor_data': sensors,// escaped JSON string on the wire
     });
   }
 

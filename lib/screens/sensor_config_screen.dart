@@ -7,18 +7,24 @@ import '../services/esp_direct_service.dart';
 
 /// Sensor Configuration Screen (ESP32 direct mode)
 ///
-/// Allows the user to:
-///   1. View each sensor's type and tag name as stored on the unit
-///   2. Change the sensor type (dropdown) and tag name (text field)
-///      for the EDITABLE sensors
-///   3. Save the full configuration back to the Sensor Unit
+/// The unit has a FIXED set of 8 sensor slots (S00..S07), displayed as
+/// "Sensor 01".."Sensor 08" (GUI index = slot index + 1; the wire always
+/// uses S00..S07). The screen ALWAYS shows all 8 slots:
+///   - S00 + S01 are the in-build sensors (temperature + humidity) —
+///     read-only, always included in the save payload.
+///   - S02..S07 are user-configurable: type dropdown (incl. "-- no type --")
+///     and tag name field.
 ///
 /// Architecture Doc v3 - Sensor Configuration Process:
 ///   - On open, send get_sensor_config → unit replies with the SAME event
-///     containing no_sensors + sensor_data (ESCAPED JSON STRING of
-///     {sensor_id, sensor_type, sensor_name} — no values).
-///   - On Save, send set_sensor_config with the SAME payload shape,
-///     including the unchanged in-build entries.
+///     containing no_sensors + sensor_data ({sensor_id, sensor_type,
+///     sensor_name} — no values). Slots absent from the reply are shown
+///     as "-- no type --".
+///   - On Save, send set_sensor_config containing ONLY the configured
+///     sensors: any slot whose type is "-- no type --" is EXCLUDED from
+///     the message entirely (e.g. Sensor 03 with no type → no S02 entry),
+///     and no_sensors counts only the included ones. sensor_data goes on
+///     the wire as a RAW JSON ARRAY (firmware checks cJSON_IsArray).
 ///
 /// ──────────────────────────────────────────────────────────────────────
 /// IMPORTANT — Update rules (mirrors MotorCalibrationScreen):
@@ -26,9 +32,8 @@ import '../services/esp_direct_service.dart';
 ///   - Fields populate ONLY from the FIRST get_sensor_config reply
 ///     (_initialConfigLoaded). Any later reply must not overwrite what
 ///     the user is editing.
-///   - Per spec, the FIRST TWO sensors are in-build sensors and are NOT
-///     editable — rendered read-only, but still included unchanged in
-///     the set_sensor_config payload.
+///   - NOTE: firmware restarts the unit after a successful
+///     set_sensor_config save — the WebSocket connection will drop.
 class SensorConfigScreen extends StatefulWidget {
   /// Device data passed in from the detail screen (used for AppBar title etc).
   final Map<String, dynamic> deviceData;
@@ -39,7 +44,7 @@ class SensorConfigScreen extends StatefulWidget {
   State<SensorConfigScreen> createState() => _SensorConfigScreenState();
 }
 
-/// One editable row of the config form. Holds the wire fields plus a
+/// One row of the config form. Holds the wire fields plus a
 /// TextEditingController for the name and a locked flag for in-build
 /// sensors.
 class _SensorConfigEntry {
@@ -63,13 +68,31 @@ class _SensorConfigEntry {
 }
 
 class _SensorConfigScreenState extends State<SensorConfigScreen> {
-  // ── Config entries (populated once from the first reply) ──────────
+  // ── Fixed slot layout ─────────────────────────────────────────────
+  /// The unit always has 8 slots: S00..S07 → "Sensor 01".."Sensor 08".
+  static const int _totalSlots = 8;
+
+  /// First two slots (S00 temperature, S01 humidity) are in-build →
+  /// read-only, always included in the save payload.
+  static const int _inBuildCount = 2;
+
+  /// Dropdown value meaning "this slot has no sensor configured".
+  /// Slots with this type are EXCLUDED from the set_sensor_config message.
+  static const String _noType = '-- no type --';
+
+  // ── Config entries (8 fixed slots, populated from the first reply) ─
   final List<_SensorConfigEntry> _entries = [];
 
-  // ── Sensor type dropdown options (spec: Temperature/Humidity/Moisture).
-  //    Types reported by the device that aren't listed are added at
-  //    parse time so the dropdown never shows an invalid value. ──────
-  final List<String> _typeOptions = ['Temperature', 'Humidity', 'Moisture'];
+  // ── Sensor type dropdown options (spec: Temperature/Humidity/Moisture
+  //    + "-- no type --"). Types reported by the device that aren't
+  //    listed are added at parse time so the dropdown never shows an
+  //    invalid value. ────────────────────────────────────────────────
+  final List<String> _typeOptions = [
+    _noType,
+    'Temperature',
+    'Humidity',
+    'Moisture',
+  ];
 
   // ── State flags ───────────────────────────────────────────────────
   /// True after the first get_sensor_config reply populated the form.
@@ -95,18 +118,18 @@ class _SensorConfigScreenState extends State<SensorConfigScreen> {
   // ============================================================
 
   @override
-    void initState() {
-      super.initState();
-      _setupEspListener();
-      // Deferred one frame: _requestInitialConfig shows a snackbar when the
-      // unit isn't authenticated, and ScaffoldMessenger.of(context) cannot be
-      // called during initState. Post-frame, the context is fully wired and
-      // the listener above is already subscribed, so no reply can be missed.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        _requestInitialConfig();
-      });
-    }
+  void initState() {
+    super.initState();
+    _setupEspListener();
+    // Deferred one frame: _requestInitialConfig shows a snackbar when the
+    // unit isn't authenticated, and ScaffoldMessenger.of(context) cannot be
+    // called during initState. Post-frame, the context is fully wired and
+    // the listener above is already subscribed, so no reply can be missed.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _requestInitialConfig();
+    });
+  }
 
   @override
   void dispose() {
@@ -166,9 +189,33 @@ class _SensorConfigScreenState extends State<SensorConfigScreen> {
     });
   }
 
+  /// Create the 8 fixed slots (S00..S07) with placeholder values. The
+  /// first reply overlay replaces these with the device-reported config;
+  /// slots the device doesn't mention stay "-- no type --".
+  void _buildFixedSlots() {
+    for (final e in _entries) {
+      e.nameCtrl.dispose();
+    }
+    _entries.clear();
+    for (var i = 0; i < _totalSlots; i++) {
+      final locked = i < _inBuildCount;
+      _entries.add(_SensorConfigEntry(
+        id: 'S${i.toString().padLeft(2, '0')}', // S00..S07
+        // In-build placeholder types by convention (S00 temp, S01 hum) —
+        // the reply overlay below replaces them with device values.
+        type: locked ? (i == 0 ? 'Temperature' : 'Humidity') : _noType,
+        name: '',
+        locked: locked,
+      ));
+    }
+  }
+
   /// Handle every get_sensor_config reply from the ESP32.
   ///
   /// Rule (see class doc): only the FIRST reply populates the form.
+  /// The reply is merged onto the 8 fixed slots by sensor_id — the reply
+  /// may contain fewer than 8 entries (unconfigured slots are omitted by
+  /// the unit) and the screen must still show all 8.
   void _onConfigMessage(Map<String, dynamic> msg) {
     if (!mounted || _initialConfigLoaded) return;
 
@@ -179,31 +226,39 @@ class _SensorConfigScreenState extends State<SensorConfigScreen> {
     }
 
     setState(() {
-      _entries.clear();
-      for (var i = 0; i < parsed.length; i++) {
-        final m = parsed[i];
+      _buildFixedSlots();
+
+      // Overlay the device-reported config onto the fixed slots by id.
+      for (final m in parsed) {
+        final id = m['sensor_id']?.toString() ?? '';
+        final idx = _entries.indexWhere((e) => e.id == id);
+        if (idx == -1) {
+          print('⚠️ SensorConfig: unknown sensor_id "$id" in reply — ignored');
+          continue;
+        }
         final type = m['sensor_type']?.toString() ?? '';
         // Keep the dropdown valid even for unknown device-reported types.
         if (type.isNotEmpty && !_typeOptions.contains(type)) {
           _typeOptions.add(type);
         }
-        _entries.add(_SensorConfigEntry(
-          id: m['sensor_id']?.toString() ?? '',
-          type: type.isNotEmpty ? type : _typeOptions.first,
-          name: m['sensor_name']?.toString() ?? '',
-          locked: i < 2, // spec: first 2 are in-build → read-only
-        ));
+        final entry = _entries[idx];
+        entry.type = type.isNotEmpty ? type : _noType;
+        entry.nameCtrl.text = m['sensor_name']?.toString() ?? '';
       }
+
       _initialConfigLoaded = true;
       _isLoadingInitial = false;
       _initialRetryTimer?.cancel();
-      print('✅ SensorConfig: initial config loaded (${_entries.length} sensors)');
+      print(
+        '✅ SensorConfig: initial config loaded '
+        '(${parsed.length} configured of $_totalSlots slots)',
+      );
     });
   }
 
-  /// sensor_data arrives as an ESCAPED JSON STRING (same convention as
-  /// sensor_unit_info). Decode defensively — malformed input yields an
-  /// empty list. Also tolerates a real List.
+  /// sensor_data may arrive as an escaped JSON STRING (unit → app keeps
+  /// the string convention) or a real List. Decode defensively —
+  /// malformed input yields an empty list.
   List<Map<String, dynamic>> _parseSensorData(dynamic raw) {
     if (raw == null) return const [];
 
@@ -230,9 +285,15 @@ class _SensorConfigScreenState extends State<SensorConfigScreen> {
   // SAVE
   // ============================================================
 
-  /// Send set_sensor_config with the FULL entry list (in-build entries
-  /// included unchanged). The unit doesn't send a reply for this event,
-  /// so mimic the WiFi dialog: brief sending state + confirmation snack.
+  /// Send set_sensor_config with ONLY the configured sensors:
+  ///   - in-build entries (S00/S01) always included, unchanged
+  ///   - editable entries included only when a type is selected
+  ///   - "-- no type --" slots are excluded from the message entirely,
+  ///     and no_sensors (computed in EspDirectService from list length)
+  ///     therefore counts only the included ones.
+  /// The unit doesn't reply to this event — and firmware RESTARTS after
+  /// a successful save — so mimic the WiFi dialog: brief sending state +
+  /// confirmation snack.
   void _onSavePressed() {
     final esp = EspDirectService.instance;
     if (!esp.isAuthenticated) {
@@ -240,9 +301,14 @@ class _SensorConfigScreenState extends State<SensorConfigScreen> {
       return;
     }
 
-    // Empty tag names would blank out the device-side labels — block save.
+    final included =
+        _entries.where((e) => e.locked || e.type != _noType).toList();
+
+    // Empty tag names on configured editable sensors would blank out the
+    // device-side labels — block save. "-- no type --" slots are exempt
+    // (they're not sent at all).
     final hasEmptyName =
-        _entries.any((e) => !e.locked && e.nameCtrl.text.trim().isEmpty);
+        included.any((e) => !e.locked && e.nameCtrl.text.trim().isEmpty);
     if (hasEmptyName) {
       _showSnack('Sensor name cannot be empty.', isError: true);
       return;
@@ -251,7 +317,7 @@ class _SensorConfigScreenState extends State<SensorConfigScreen> {
     setState(() => _isSaving = true);
 
     esp.setSensorConfig(
-      sensors: _entries.map((e) => e.toWireJson()).toList(),
+      sensors: included.map((e) => e.toWireJson()).toList(),
     );
 
     Future.delayed(const Duration(seconds: 1), () {
@@ -310,7 +376,7 @@ class _SensorConfigScreenState extends State<SensorConfigScreen> {
                         ),
                         const SizedBox(height: 16),
 
-                        // ── One card per sensor ─────────────────────
+                        // ── One card per slot (always all 8) ────────
                         for (var i = 0; i < _entries.length; i++) ...[
                           _buildSensorCard(i, _entries[i]),
                           const SizedBox(height: 12),
@@ -353,6 +419,8 @@ class _SensorConfigScreenState extends State<SensorConfigScreen> {
   }
 
   // ── One sensor card: header / type dropdown / name field ─────────
+  // Header "Sensor 01".."Sensor 08" (GUI index = slot index + 1; the
+  // wire id stays S00..S07 — intentional off-by-one per the spec figure).
   Widget _buildSensorCard(int index, _SensorConfigEntry entry) {
     final String header =
         'Sensor ${(index + 1).toString().padLeft(2, '0')}';
@@ -438,8 +506,11 @@ class _SensorConfigScreenState extends State<SensorConfigScreen> {
                       ? _buildReadOnlyBox(entry.nameCtrl.text)
                       : TextField(
                           controller: entry.nameCtrl,
+                          enabled: entry.type != _noType,
                           decoration: _fieldDecoration(
-                            hint: 'Enter tag name',
+                            hint: entry.type == _noType
+                                ? 'Select a type first'
+                                : 'Enter tag name',
                           ),
                         ),
                 ),

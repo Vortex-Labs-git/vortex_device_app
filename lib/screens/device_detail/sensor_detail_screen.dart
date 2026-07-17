@@ -32,10 +32,10 @@ import '../sensor_config_screen.dart';
 // dummy data. Defaults to false — production behavior is unchanged.
 //
 // On dispose, server mode resubscribes to 'device_list' so the home list
-// resumes; direct mode must NOT touch the cloud WebSocket. Bottom buttons:
-// "Change WiFi connection" (→ set_device_wifi popup) renders in DIRECT MODE
-// ONLY — it doesn't exist in server mode; "Sensor configuration" (→
-// SensorConfigScreen) always renders but only navigates in direct mode.
+// resumes; direct mode must NOT touch the cloud WebSocket. Bottom buttons
+// ("Change WiFi connection" → set_device_wifi popup; "Sensor configuration"
+// → SensorConfigScreen) render in DIRECT MODE ONLY — both are AP-mode
+// operations, so server (online) mode shows no bottom buttons at all.
 // Unit name Edit remains a stub until the sensor edit REST is defined.
 // Sensor tag names are read-only.
 // =============================================================================
@@ -300,14 +300,14 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
     );
   }
 
-  // ----- One sensor: Sensor Type / Tag name (Edit) / Sensor value -----
+  // ----- One sensor: Sensor Type(S01) / Tag name / Sensor value -----
   Widget _buildSensorCard(Sensor sensor) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            _infoRow('Sensor Type', Text(
+            _infoRow('Sensor Type(${_displaySensorId(sensor)})', Text(
               sensor.type.isNotEmpty ? sensor.type : '—',
               style: const TextStyle(fontWeight: FontWeight.w500),
             )),
@@ -341,6 +341,21 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
     );
   }
 
+  // ----- Sensor id display formatting -----
+  // Backend sensor ids are 0-based (S00..S07) but the GUI shows them
+  // 1-based (S01..S08) — same convention as the config screen headers.
+  // Handles both bare "S00" and prefixed "SU202601003_S00" formats;
+  // anything unrecognized is shown as-is.
+  String _displaySensorId(Sensor sensor) {
+    final raw = sensor.id.trim();
+    final tail =
+        raw.contains('_') ? raw.substring(raw.lastIndexOf('_') + 1) : raw;
+    final match = RegExp(r'^[Ss](\d+)$').firstMatch(tail);
+    if (match == null) return raw;
+    final n = int.parse(match.group(1)!) + 1;
+    return 'S${n.toString().padLeft(2, '0')}';
+  }
+
   // ----- Sensor value display formatting -----
   // Numeric readings are shown with exactly 2 decimal places ("24.5" →
   // "24.50", "61" → "61.00"). Non-numeric values pass through unchanged
@@ -359,24 +374,23 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
     return text;
   }
 
-  // ----- Bottom buttons: Change WiFi (direct mode only) + Sensor config -----
+  // ----- Bottom buttons: direct mode ONLY. Both are AP-mode operations,
+  //       so in server (online) mode neither button exists. -----
   Widget _buildBottomButtons() {
+    if (!_isDirectMode) return const SizedBox.shrink();
+
     return Column(
       children: [
-        // set_device_wifi is an AP-mode operation, so the button simply
-        // doesn't exist in server mode (no dead button + snackbar).
-        if (_isDirectMode) ...[
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: _onChangeWifi,
-              icon: const Icon(Icons.wifi),
-              label: const Text('Change WiFi connection'),
-              style: _buttonStyle(),
-            ),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: _onChangeWifi,
+            icon: const Icon(Icons.wifi),
+            label: const Text('Change WiFi connection'),
+            style: _buttonStyle(),
           ),
-          const SizedBox(height: 12),
-        ],
+        ),
+        const SizedBox(height: 12),
         SizedBox(
           width: double.infinity,
           child: ElevatedButton.icon(
@@ -404,22 +418,13 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
   //       read-only in this screen. -----
   void _onEditName() => _todo('Rename sensor unit');
 
-  /// get/set_sensor_config are AP-mode operations — direct mode only.
-  /// In server mode, tell the user to connect to the unit's hotspot.
+  /// get/set_sensor_config are AP-mode operations. The button that reaches
+  /// this only renders in direct mode, so no server-mode guard is needed.
   /// Preview mode never navigates — SensorConfigScreen would try to talk
   /// to EspDirectService.
   void _onSensorConfig() {
     if (_isPreviewMode) {
       _todo('Sensor configuration (preview)');
-      return;
-    }
-    if (!_isDirectMode) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-              'Connect to the sensor unit\'s hotspot to configure sensors.'),
-        ),
-      );
       return;
     }
     Navigator.push(

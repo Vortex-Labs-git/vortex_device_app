@@ -151,10 +151,12 @@ class AuthService {
             // Has credentials but refresh failed (likely no internet / AP mode)
             // Continue — app will work in offline/direct mode
             print("🔑 Refresh failed but has creds — continuing in offline mode");
+          } else {
+            print("✅ login successful for: ${currentUser!['name']}");
           }
+        } else {
+          print("✅ Auto-login successful for: ${currentUser!['name']}");
         }
-
-        print("✅ Auto-login successful for: ${currentUser!['name']}");
 
         // Fire-and-forget: try server WebSocket in background
         // Do NOT await — this lets the app start instantly

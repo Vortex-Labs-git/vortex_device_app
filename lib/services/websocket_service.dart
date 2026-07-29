@@ -279,7 +279,6 @@ class WebSocketService {
           _deviceListController.add(deviceList);
           break;
         // ---- Device Detail Update ----
-        case 'device_detail':
         case 'device_basic_detail':
           final Map<String, dynamic> deviceData = data['data'] != null
               ? Map<String, dynamic>.from(data['data'])

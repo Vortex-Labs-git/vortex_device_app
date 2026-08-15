@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import '../../../models/valve_device.dart';
 
 // =============================================================================
 // SCHEDULE UTILS
@@ -38,18 +39,18 @@ TimeOfDay parseScheduleTime(String timeStr) {
   );
 }
 
-/// Parses the schedule list out of a `device_schedule` WebSocket event.
+/// Parses the schedule list out of a `device_schedule` event.
 ///
-/// The server sends:
+/// Server sends:
 ///   {"event":"device_schedule", "device_id":"...",
-///    "schedule":{ ..., "schedule":"[JSON string]", ... }}
+///    "schedule":{"schedule":"[{\"day\":\"Monday\",\"08:00-08:20\":\"90\"}]"},
+///    "Sensor":{...}}
 ///
-/// The inner `schedule` field may be a JSON string or an already-decoded list.
+/// The inner `schedule` may be a JSON string or an already-decoded list.
 ///
-/// Returns an empty list when the device has no schedule, and `null` when the
-/// payload carries nothing usable — in that case the caller should keep the
-/// list it already has.
-List<Map<String, dynamic>>? parseSchedulePayload(Map<String, dynamic> data) {
+/// Returns [] when the device has no schedule, and null when the payload
+/// carries nothing usable — the caller keeps the list it already has.
+List<ScheduleEntry>? parseSchedulePayload(Map<String, dynamic> data) {
   try {
     final scheduleData = data['schedule'];
     if (scheduleData == null) return null;
@@ -59,17 +60,20 @@ List<Map<String, dynamic>>? parseSchedulePayload(Map<String, dynamic> data) {
       return [];
     }
 
-    final List<dynamic> parsed;
+    final List<dynamic> raw;
     if (scheduleJson is String) {
-      parsed = jsonDecode(scheduleJson);
+      raw = jsonDecode(scheduleJson);
     } else if (scheduleJson is List) {
-      parsed = scheduleJson;
+      raw = scheduleJson;
     } else {
       print("⚠️ Unexpected schedule format: ${scheduleJson.runtimeType}");
       return null;
     }
 
-    return parsed.map((e) => Map<String, dynamic>.from(e)).toList();
+    return raw
+        .whereType<Map>()
+        .expand((e) => ScheduleEntry.listFromJson(Map<String, dynamic>.from(e)))
+        .toList();
   } catch (e) {
     print("❌ Error parsing schedule data: $e");
     return null;

@@ -1,18 +1,20 @@
 import 'package:flutter/material.dart';
 
+import '../../../models/valve_device.dart';
+
 // =============================================================================
 // SCHEDULE CARD
 // =============================================================================
-// Shows the schedule table (Day | Open | Close | delete), an "Add Schedule"
+// Shows the schedule table (Day | Time | Angle | delete), an "Add Schedule"
 // button, and a "Save Schedule" button. All add/edit/delete dialogs and the
 // REST save call live in the parent screen and are invoked through callbacks.
 // =============================================================================
 
 class ScheduleCard extends StatelessWidget {
-  final List<Map<String, dynamic>> schedules;
+  final List<ScheduleEntry> schedules;
   final bool isSavingSchedule;
   final VoidCallback onAddPressed;
-  final ValueChanged<int> onRowTapped; // Tap a row to edit it
+  final ValueChanged<int> onRowTapped;   // Tap a row to edit it
   final ValueChanged<int> onRowDeleted;
   final VoidCallback onSavePressed;
 
@@ -25,6 +27,12 @@ class ScheduleCard extends StatelessWidget {
     required this.onRowDeleted,
     required this.onSavePressed,
   });
+
+  // Column widths, shared by the header and every row so they stay aligned.
+  static const int _dayFlex = 3;
+  static const int _timeFlex = 3;
+  static const int _angleFlex = 2;
+  static const double _deleteWidth = 40;
 
   @override
   Widget build(BuildContext context) {
@@ -54,7 +62,7 @@ class ScheduleCard extends StatelessWidget {
             const SizedBox(height: 16),
 
             // =========================================================
-            // SECTION 2: TABLE HEADER (Day | Open | Close | _)
+            // SECTION 2: TABLE HEADER (Day | Time | Angle | _)
             // =========================================================
             Container(
               padding: const EdgeInsets.symmetric(vertical: 8),
@@ -65,33 +73,27 @@ class ScheduleCard extends StatelessWidget {
               child: const Row(
                 children: [
                   Expanded(
-                    flex: 3,
+                    flex: _dayFlex,
                     child: Center(
-                      child: Text(
-                        'Day',
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
+                      child: Text('Day',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
                     ),
                   ),
                   Expanded(
-                    flex: 2,
+                    flex: _timeFlex,
                     child: Center(
-                      child: Text(
-                        'Open',
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
+                      child: Text('Time',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
                     ),
                   ),
                   Expanded(
-                    flex: 2,
+                    flex: _angleFlex,
                     child: Center(
-                      child: Text(
-                        'Close',
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
+                      child: Text('Angle',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
                     ),
                   ),
-                  SizedBox(width: 40), // Space for delete button column
+                  SizedBox(width: _deleteWidth), // delete button column
                 ],
               ),
             ),
@@ -111,16 +113,9 @@ class ScheduleCard extends StatelessWidget {
                 ),
               )
             else
-              ...schedules.asMap().entries.map((entry) {
-                final i = entry.key;
-                final s = entry.value;
-                return _buildRow(
-                  index: i,
-                  day: s['day'] ?? '',
-                  openTime: s['open'] ?? '',
-                  closeTime: s['close'] ?? '',
-                );
-              }),
+              ...schedules.asMap().entries.map(
+                    (e) => _buildRow(index: e.key, entry: e.value),
+                  ),
 
             const SizedBox(height: 12),
 
@@ -174,16 +169,10 @@ class ScheduleCard extends StatelessWidget {
   }
 
   // ───────────────────────────────────────────────────────────────────────
-  // Helper: single schedule row (Day | Open | Close | delete-icon)
-  // Tapping the row body calls onRowTapped (edit). The delete icon calls
-  // onRowDeleted independently.
+  // Helper: single schedule row (Day | Time | Angle | delete-icon)
+  // Tapping the row body edits it; the delete icon deletes independently.
   // ───────────────────────────────────────────────────────────────────────
-  Widget _buildRow({
-    required int index,
-    required String day,
-    required String openTime,
-    required String closeTime,
-  }) {
+  Widget _buildRow({required int index, required ScheduleEntry entry}) {
     return InkWell(
       onTap: () => onRowTapped(index),
       child: Container(
@@ -194,43 +183,43 @@ class ScheduleCard extends StatelessWidget {
         child: Row(
           children: [
             Expanded(
-              flex: 3,
+              flex: _dayFlex,
               child: Center(
                 child: Text(
-                  day,
+                  entry.day,
                   style: const TextStyle(fontSize: 13),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
             ),
             Expanded(
-              flex: 2,
+              flex: _timeFlex,
               child: Center(
                 child: Text(
-                  openTime,
-                  style: TextStyle(
+                  '${entry.start} – ${entry.end}',
+                  style: const TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w500,
-                    color: Colors.green[700],
                   ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ),
             Expanded(
-              flex: 2,
+              flex: _angleFlex,
               child: Center(
                 child: Text(
-                  closeTime,
+                  '${entry.angle}°',
                   style: TextStyle(
                     fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.red[700],
+                    fontWeight: FontWeight.w600,
+                    color: _angleColor(entry.angle),
                   ),
                 ),
               ),
             ),
             SizedBox(
-              width: 40,
+              width: _deleteWidth,
               child: IconButton(
                 icon: const Icon(Icons.delete_outline, size: 18),
                 color: Colors.red[300],
@@ -243,5 +232,13 @@ class ScheduleCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// Keeps the old table's colour language: green = open, red = closed,
+  /// amber for anything in between.
+  Color _angleColor(int angle) {
+    if (angle <= 0) return Colors.red[700]!;
+    if (angle >= 90) return Colors.green[700]!;
+    return Colors.orange[800]!;
   }
 }

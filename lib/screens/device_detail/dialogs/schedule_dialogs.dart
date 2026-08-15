@@ -1,42 +1,35 @@
 import 'package:flutter/material.dart';
 
+import '../../../models/valve_device.dart';
 import '../utils/schedule_utils.dart';
-
-// =============================================================================
-// SCHEDULE DIALOGS
-// =============================================================================
-// Add/edit dialog and delete confirmation for a single schedule entry.
-// Both are self-contained: they own their dialog-local state and return the
-// user's answer. Nothing is saved here — the caller updates its list and the
-// screen's "Save Schedule" button pushes it to the server.
-// =============================================================================
 
 /// Shows the add/edit schedule dialog.
 ///
 /// Pass the existing entry as [initial] to edit it; omit it to add a new one.
-/// Returns the entry as `{day, open, close}`, or null if the user cancelled.
-Future<Map<String, dynamic>?> showScheduleEntryDialog(
+/// Returns the entry, or null if the user cancelled.
+Future<ScheduleEntry?> showScheduleEntryDialog(
   BuildContext context, {
-  Map<String, dynamic>? initial,
+  ScheduleEntry? initial,
 }) {
   final existing = initial;
   final isEditing = existing != null;
 
-  String selectedDay = existing?['day'] ?? kScheduleDayOptions.first;
-  TimeOfDay openTime = existing != null
-      ? parseScheduleTime(existing['open'] ?? '08:00')
+  String selectedDay = existing?.day ?? kScheduleDayOptions.first;
+  TimeOfDay startTime = existing != null
+      ? parseScheduleTime(existing.start)
       : const TimeOfDay(hour: 8, minute: 0);
-  TimeOfDay closeTime = existing != null
-      ? parseScheduleTime(existing['close'] ?? '08:20')
+  TimeOfDay endTime = existing != null
+      ? parseScheduleTime(existing.end)
       : const TimeOfDay(hour: 8, minute: 20);
+  double angle = (existing?.angle ?? 90).toDouble();
 
-  return showDialog<Map<String, dynamic>>(
+  return showDialog<ScheduleEntry>(
     context: context,
     builder: (dialogContext) {
       return StatefulBuilder(
         builder: (dialogContext, setDialogState) {
           // ───────────────────────────────────────────────────────────────
-          // Helper: one tappable time field (opens the platform time picker)
+          // Helper: one tappable time field
           // ───────────────────────────────────────────────────────────────
           Widget timeField({
             required String label,
@@ -61,10 +54,8 @@ Future<Map<String, dynamic>?> showScheduleEntryDialog(
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      formatScheduleTime(value),
-                      style: const TextStyle(fontSize: 16),
-                    ),
+                    Text(formatScheduleTime(value),
+                        style: const TextStyle(fontSize: 16)),
                     Icon(Icons.access_time, color: iconColor),
                   ],
                 ),
@@ -74,43 +65,82 @@ Future<Map<String, dynamic>?> showScheduleEntryDialog(
 
           return AlertDialog(
             title: Text(isEditing ? 'Edit Schedule' : 'Add Schedule'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Day picker
-                DropdownButtonFormField<String>(
-                  value: selectedDay,
-                  decoration: const InputDecoration(
-                    labelText: 'Day',
-                    border: OutlineInputBorder(),
-                    isDense: true,
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Day
+                  DropdownButtonFormField<String>(
+                    value: selectedDay,
+                    decoration: const InputDecoration(
+                      labelText: 'Day',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    items: kScheduleDayOptions
+                        .map((d) => DropdownMenuItem(value: d, child: Text(d)))
+                        .toList(),
+                    onChanged: (val) {
+                      if (val != null) setDialogState(() => selectedDay = val);
+                    },
                   ),
-                  items: kScheduleDayOptions
-                      .map((d) => DropdownMenuItem(value: d, child: Text(d)))
-                      .toList(),
-                  onChanged: (val) {
-                    if (val != null) setDialogState(() => selectedDay = val);
-                  },
-                ),
 
-                const SizedBox(height: 16),
+                  const SizedBox(height: 16),
 
-                timeField(
-                  label: 'Open Time',
-                  value: openTime,
-                  iconColor: Colors.green[600]!,
-                  onPicked: (v) => setDialogState(() => openTime = v),
-                ),
+                  // Time range
+                  Row(
+                    children: [
+                      Expanded(
+                        child: timeField(
+                          label: 'From',
+                          value: startTime,
+                          iconColor: Colors.green[600]!,
+                          onPicked: (v) => setDialogState(() => startTime = v),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: timeField(
+                          label: 'To',
+                          value: endTime,
+                          iconColor: Colors.red[600]!,
+                          onPicked: (v) => setDialogState(() => endTime = v),
+                        ),
+                      ),
+                    ],
+                  ),
 
-                const SizedBox(height: 16),
+                  const SizedBox(height: 16),
 
-                timeField(
-                  label: 'Close Time',
-                  value: closeTime,
-                  iconColor: Colors.red[600]!,
-                  onPicked: (v) => setDialogState(() => closeTime = v),
-                ),
-              ],
+                  // Angle held during the range
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Valve angle: ${angle.round()}°',
+                      style: const TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                  Slider(
+                    value: angle,
+                    min: 0,
+                    max: 90,
+                    divisions: 18,              // 5° steps
+                    label: '${angle.round()}°',
+                    activeColor: const Color(0xFF3F51B5),
+                    onChanged: (v) => setDialogState(() => angle = v),
+                  ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('0° closed',
+                          style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+                      Text('90° open',
+                          style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+                    ],
+                  ),
+                ],
+              ),
             ),
             actions: [
               TextButton(
@@ -119,11 +149,27 @@ Future<Map<String, dynamic>?> showScheduleEntryDialog(
               ),
               ElevatedButton(
                 onPressed: () {
-                  Navigator.pop(dialogContext, <String, dynamic>{
-                    'day': selectedDay,
-                    'open': formatScheduleTime(openTime),
-                    'close': formatScheduleTime(closeTime),
-                  });
+                  final start = formatScheduleTime(startTime);
+                  final end = formatScheduleTime(endTime);
+
+                  if (start == end) {
+                    ScaffoldMessenger.of(dialogContext).showSnackBar(
+                      const SnackBar(
+                        content: Text('Start and end time cannot be the same'),
+                      ),
+                    );
+                    return;
+                  }
+
+                  Navigator.pop(
+                    dialogContext,
+                    ScheduleEntry(
+                      day: selectedDay,
+                      start: start,
+                      end: end,
+                      angle: angle.round(),
+                    ),
+                  );
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF3F51B5),
@@ -142,14 +188,14 @@ Future<Map<String, dynamic>?> showScheduleEntryDialog(
 /// Asks the user to confirm deleting [entry]. Returns true when confirmed.
 Future<bool> showDeleteScheduleDialog(
   BuildContext context,
-  Map<String, dynamic> entry,
+  ScheduleEntry entry,
 ) async {
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (dialogContext) => AlertDialog(
       title: const Text('Delete Schedule'),
       content: Text(
-          'Delete "${entry['day']} — Open: ${entry['open']}, Close: ${entry['close']}"?'),
+          'Delete "${entry.day} — ${entry.timeRange} at ${entry.angle}°"?'),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(dialogContext, false),

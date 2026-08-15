@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/device_control_api.dart';
 import '../motor_calibration_screen.dart';
+import '../../models/valve_device.dart';
 
 // Controllers (live data + confirmation wait)
 import 'controllers/device_feeds.dart';
@@ -93,7 +94,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
   Timer? _angleEditDebounce;
 
   // -- Schedule data --
-  List<Map<String, dynamic>> _schedules = [];
+ List<ScheduleEntry> _schedules = []; 
   bool _isSavingSchedule = false;
   bool _schedulesLocallyEdited = false;
 
@@ -146,7 +147,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
     _isScheduleMode = _readScheduleFlag(_device['user_schedule_ctrl']);
     _isSensorMode = _readScheduleFlag(_device['user_sensor_ctrl']);
     _isManualMode = _readScheduleFlag(_device['user_set_pos']);
-    _isAutomateMode = !_isManualMode || _isScheduleMode || _isSensorMode;
+    _isAutomateMode =  _isScheduleMode || _isSensorMode;
 
     if (_isDirectMode) {
       // Direct mode: only manual control is allowed; clear cached state so
@@ -239,8 +240,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
           
           final pickingAutomation = _isAutomateMode && !_isScheduleMode && !_isSensorMode;
           if (!pickingAutomation) {
-            _isAutomateMode =
-                !serverManualMode || serverScheduleMode || serverSensorMode;
+            _isAutomateMode = serverScheduleMode || serverSensorMode;
           }
         });
       }

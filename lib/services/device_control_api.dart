@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../models/valve_device.dart';
 
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -137,18 +138,18 @@ class DeviceControlApi {
 
   /// Replaces the device's stored schedule with [schedules]. An empty list
   /// turns scheduling off.
-  static Future<DeviceApiResult> saveSchedule({
+    static Future<DeviceApiResult> saveSchedule({
     required Object? deviceId,
-    required List<Map<String, dynamic>> schedules,
+    required List<ScheduleEntry> schedules,
   }) {
     return _post(
       logTag: 'Schedule',
       body: {
-        'event': 'set_valve_control',
+        'event': 'set_valve_schedule',
+        'timestamp': DateTime.now().toUtc().toIso8601String(),
         'device_id': deviceId,
-        'set_scheduledata': {
-          'set_schedule': schedules.isNotEmpty,
-          'schedule_info': schedules,
+        'set_sheduledata': {
+          'schedule_info': schedules.map((e) => e.toJson()).toList(),
         },
       },
     );

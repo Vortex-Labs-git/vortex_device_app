@@ -55,12 +55,13 @@ class DeviceControlApi {
   // Public calls
   // ---------------------------------------------------------------------------
 
-  /// Switches the valve between Manual and Schedule control.
+  /// Switches the valve between Manual and Schedule control. -------------------
   static Future<DeviceApiResult> switchControlMode({
     required Object? deviceId,
     required String deviceName,
     required int angle,
     required bool scheduleMode,
+    required bool sensorMode,
   }) {
     return _post(
       logTag: 'Mode Switch',
@@ -70,7 +71,7 @@ class DeviceControlApi {
         'device_id': deviceId,
         'set_controller': {
           'schedule': scheduleMode,
-          'sensor': false,
+          'sensor': sensorMode,
         },
         'valve_data': {
           'name': deviceName,
@@ -82,7 +83,7 @@ class DeviceControlApi {
     );
   }
 
-  /// Drives the valve to [angle] (0 = closed, 90 = open).
+  /// Drives the valve to [angle] (0 = closed, 90 = open). -------------------
   static Future<DeviceApiResult> setValveAngle({
     required Object? deviceId,
     required String deviceName,

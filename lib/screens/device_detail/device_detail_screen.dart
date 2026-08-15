@@ -77,6 +77,9 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
 
   // -- Schedule/Manual mode toggle (synced with user_schedule_ctrl in DB) --
   bool _isScheduleMode = false;
+  bool _isSensorMode = false;
+  bool _isManualMode = false;
+  bool _isAutomateMode = false;   // master switch position (see note below)
   bool _isSwitchingMode = false;
 
   // -- Valve control (state mode) --
@@ -141,12 +144,17 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
 
     // Read initial schedule mode from DB field user_schedule_ctrl
     _isScheduleMode = _readScheduleFlag(_device['user_schedule_ctrl']);
+    _isSensorMode = _readScheduleFlag(_device['user_sensor_ctrl']);
+    _isManualMode = _readScheduleFlag(_device['user_set_pos']);
+    _isAutomateMode = !_isManualMode || _isScheduleMode || _isSensorMode;
 
     if (_isDirectMode) {
       // Direct mode: only manual control is allowed; clear cached state so
       // the first ESP32 poll response is the source of truth.
       _controlMode = 'manual';
+      _isManualMode = true;
       _isScheduleMode = false;
+      _isSensorMode = false;
       _device['vwv_pos'] = null;
       _device['vwv_is_open'] = null;
       _device['vwv_is_close'] = null;
@@ -221,10 +229,19 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
     // switch ourselves)
     if (!_isSwitchingMode) {
       final serverScheduleMode = _readScheduleFlag(_device['user_schedule_ctrl']);
-      if (serverScheduleMode != _isScheduleMode) {
+      final serverSensorMode   = _readScheduleFlag(_device['user_sensor_ctrl']);
+      final serverManualMode   = _readScheduleFlag(_device['user_set_pos']);
+      if (serverScheduleMode != _isScheduleMode || serverSensorMode != _isSensorMode || serverManualMode != _isManualMode) {
         setState(() {
           _isScheduleMode = serverScheduleMode;
-          _controlMode = serverScheduleMode ? 'schedule' : 'manual';
+          _isSensorMode   = serverSensorMode;
+          _isManualMode = serverManualMode;
+          
+          final pickingAutomation = _isAutomateMode && !_isScheduleMode && !_isSensorMode;
+          if (!pickingAutomation) {
+            _isAutomateMode =
+                !serverManualMode || serverScheduleMode || serverSensorMode;
+          }
         });
       }
     }
@@ -278,38 +295,61 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
   }
 
   // ===========================================================================
-  // SECTION 4: MODE SWITCH (Manual ↔ Schedule)
+  // SECTION 4: MODE SWITCH (Manual ↔ Schedule) REST API calling setup ----------------
   // ===========================================================================
 
-  Future<void> _sendModeSwitch(bool scheduleMode) async {
+  void _onAutomateChanged(bool automate) {
+    setState(() => _isAutomateMode = automate);
+
+    // Turning Automate ON sends nothing — there's no automation picked yet.
+    if (!automate && (_isScheduleMode || _isSensorMode)) {
+      _sendControlMethod(schedule: false, sensor: false);
+    }
+  }
+
+  void _onScheduleChanged(bool enabled) =>
+      _sendControlMethod(schedule: enabled, sensor: _isSensorMode);
+
+  void _onSensorChanged(bool enabled) =>
+      _sendControlMethod(schedule: _isScheduleMode, sensor: enabled);
+
+  Future<void> _sendControlMethod({
+    required bool schedule,
+    required bool sensor,
+  }) async {
     setState(() => _isSwitchingMode = true);
 
     final result = await DeviceControlApi.switchControlMode(
       deviceId: _device['id'],
       deviceName: _deviceName,
       angle: _actualPosition,
-      scheduleMode: scheduleMode,
+      scheduleMode: schedule,
+      sensorMode: sensor,
     );
 
     if (!mounted) return;
 
     if (result.success) {
       setState(() {
-        _isScheduleMode = scheduleMode;
-        _controlMode = scheduleMode ? 'schedule' : 'manual';
+        _isScheduleMode = schedule;
+        _isSensorMode   = sensor;
+        _isManualMode   = !schedule && !sensor;
+        if (schedule || sensor) _isAutomateMode = true;
       });
-      _showMessage(
-        scheduleMode
-            ? 'Switched to Schedule mode — valve follows schedule'
-            : 'Switched to Manual mode — you control the valve',
-        color: Colors.blue,
-        duration: const Duration(seconds: 2),
-      );
+      _showMessage(_controlMethodMessage(schedule: schedule, sensor: sensor),
+          color: Colors.blue, duration: const Duration(seconds: 2));
     } else {
       _showMessage(result.displayMessage, color: Colors.red);
     }
 
     setState(() => _isSwitchingMode = false);
+  }
+
+  String _controlMethodMessage({required bool schedule, required bool sensor}) {
+    if (schedule && sensor) return 'Schedule + Sensor — schedule runs with sensor override';
+    if (schedule) return 'Switched to Schedule mode — valve follows schedule';
+    if (sensor)   return 'Switched to Sensor mode — valve follows the sensor';
+    return 'Switched to Manual mode — you control the valve';
   }
 
   // ===========================================================================
@@ -575,9 +615,13 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
             // 9.2  Mode toggle (server mode only)
             if (!_isDirectMode) ...[
               ModeToggleCard(
+                isAutomateMode: _isAutomateMode,
                 isScheduleMode: _isScheduleMode,
+                isSensorMode: _isSensorMode,
                 isSwitching: _isSwitchingMode,
-                onModeChanged: _sendModeSwitch,
+                onAutomateChanged: _onAutomateChanged,
+                onScheduleChanged: _onScheduleChanged,
+                onSensorChanged: _onSensorChanged,
               ),
               const SizedBox(height: 16),
             ],

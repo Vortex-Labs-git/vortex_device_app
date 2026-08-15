@@ -49,7 +49,7 @@ class DeviceControlApi {
   DeviceControlApi._();
 
   static const String controlEndpoint =
-      'https://vortexlabsofficial.com/vortex_app/control_device.php';
+      'https://vortexlabsofficial.com/device_app/control_device.php';
 
   // ---------------------------------------------------------------------------
   // Public calls

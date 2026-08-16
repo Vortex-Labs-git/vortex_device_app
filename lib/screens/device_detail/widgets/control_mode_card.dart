@@ -10,13 +10,15 @@ import 'package:flutter/material.dart';
 class ControlModeCard extends StatelessWidget {
   final String controlMode; // 'manual' | 'schedule' | 'sensor'
   final bool isDirectMode;
+  final bool isOffline; 
   final ValueChanged<String> onModeSelected;
-  final VoidCallback onDisabledTap; // Called when user taps a locked option
+  final ValueChanged<String> onDisabledTap; // Called when user taps a locked option
 
   const ControlModeCard({
     super.key,
     required this.controlMode,
     required this.isDirectMode,
+    this.isOffline = false, 
     required this.onModeSelected,
     required this.onDisabledTap,
   });
@@ -51,7 +53,7 @@ class ControlModeCard extends StatelessWidget {
                   icon: Icons.pan_tool,
                   label: 'manual',
                   isSelected: controlMode == 'manual',
-                  isDisabled: false,
+                  isDisabled: isOffline,
                 ),
 
                 // Schedule button (locked in direct mode)
@@ -91,7 +93,7 @@ class ControlModeCard extends StatelessWidget {
     required bool isDisabled,
   }) {
     return GestureDetector(
-      onTap: isDisabled ? onDisabledTap : () => onModeSelected(mode),
+      onTap: isDisabled ? () => onDisabledTap(mode) : () => onModeSelected(mode),
       child: Opacity(
         opacity: isDisabled ? 0.35 : 1.0,
         child: Container(

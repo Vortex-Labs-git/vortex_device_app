@@ -160,7 +160,12 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
       _device['vwv_is_open'] = null;
       _device['vwv_is_close'] = null;
     } else {
-      _controlMode = _isScheduleMode ? 'schedule' : 'manual';
+      final online = isDeviceOnline(_device['vwv_last_seen']?.toString());
+      if (!online) {
+        _controlMode = 'schedule';
+      } else {
+        _controlMode = _isScheduleMode ? 'schedule' : 'manual';
+      }
     }
 
     // Initialize slider angle from DB
@@ -631,9 +636,12 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
               ControlModeCard(
                 controlMode: _controlMode,
                 isDirectMode: _isDirectMode,
+                isOffline: !isOnline,
                 onModeSelected: (mode) => setState(() => _controlMode = mode),
-                onDisabledTap: () => _showMessage(
-                  'Schedule & Sensor require server connection',
+                onDisabledTap: (mode) => _showMessage(
+                  mode == 'manual'
+                      ? 'Manual control needs the device online'
+                      : 'Schedule & Sensor require server connection',
                   duration: const Duration(seconds: 2),
                 ),
               ),

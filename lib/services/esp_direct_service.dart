@@ -65,6 +65,7 @@ class EspDirectService {
   static const String defaultApIp = '192.168.4.1';
   static const int defaultPort = 80;
   static const String wsPath = '/ws';
+  static const Duration slotReleaseDelay = Duration(milliseconds: 600);
 
   // ============================================================
   // CONNECTION MANAGEMENT
@@ -82,7 +83,16 @@ class EspDirectService {
     try {
       print('🔄 ESP32: Connecting to ws://$ip:$port$wsPath');
       
+      final hadSocket = _channel != null;
       await disconnect();
+
+      // The ESP32 accepts ONE client. Its old connection lingers for a
+      // moment after close, and a reconnect inside that window is refused —
+      // which would leave us with no link at all.
+      if (hadSocket) {
+        print('⏳ ESP32: Waiting ${slotReleaseDelay.inMilliseconds}ms for the ''old client slot to free up');
+        await Future.delayed(slotReleaseDelay);
+      }
       
       final wsUri = Uri(
         scheme: 'ws',
@@ -90,9 +100,7 @@ class EspDirectService {
         port: port,
         path: wsPath,
       );
-      
       _channel = WebSocketChannel.connect(wsUri);
-      
       await _channel!.ready;
       
       _isConnected = true;

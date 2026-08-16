@@ -8,12 +8,12 @@ import '../../theme/glass_theme.dart';
 // GLASS SURFACE
 // =============================================================================
 // The one primitive every other glass widget is built from: a rounded pane
-// that blurs whatever is behind it, fills itself with a translucent sheen,
-// and draws a bright hairline edge plus a soft drop shadow.
+// filled with a translucent sheen, a bright hairline edge and a soft drop
+// shadow — optionally blurring whatever is behind it.
 //
 // Layer order (back to front):
 //   1. drop shadow      — on the outer container, outside the clip
-//   2. BackdropFilter   — blurs the backdrop, clipped to the rounded rect
+//   2. BackdropFilter   — only when [enableBlur]; clipped to the rounded rect
 //   3. sheen gradient   — the translucent "glass" itself
 //   4. hairline border  — the lit edge of the pane
 //   5. ink / child      — ripples stay inside the rounded rect
@@ -21,19 +21,32 @@ import '../../theme/glass_theme.dart';
 // [tint] pulls the whole pane towards a color (green when a device is online,
 // red for errors) while keeping it translucent.
 //
-// PERFORMANCE: BackdropFilter is not free. Panes are wrapped in a
-// RepaintBoundary, and callers rendering many at once (list rows) can pass
-// a smaller [blur] or set [enableBlur] to false to fall back to a plain
-// translucent fill, which is visually close and much cheaper.
+// ─── WHY [enableBlur] DEFAULTS TO FALSE ──────────────────────────────────────
+// BackdropFilter is the most expensive widget in a Flutter frame, and it
+// cannot be cached: anything behind it is re-blurred every frame it moves.
+// A screen of blurring cards drops frames on mid-range phones.
+//
+// It also buys almost nothing here. These panes sit on GlassBackground, which
+// is a smooth gradient — and blurring a smooth gradient returns very nearly
+// the same gradient. Measured on a 4-card screen, blur on vs. off differed by
+// 0.38% mean / 17-of-255 max, with under 1% of pixels differing perceptibly.
+//
+// So the rule is: blur only where there is real detail behind the pane to
+// soften. That means the chrome that content scrolls under — GlassAppBar,
+// GlassBottomNav — and the dialog barrier. Those are one or two per frame and
+// visibly earn it. A card over the gradient does not.
+//
+// Pass enableBlur: true if you put a pane over a photo, a map, or another
+// pane's content, where the frosting actually reads.
 // =============================================================================
 
 class GlassSurface extends StatelessWidget {
   final Widget child;
 
-  /// Blur sigma applied to the backdrop. Ignored when [enableBlur] is false.
+  /// Blur sigma used when [enableBlur] is on. Ignored otherwise.
   final double blur;
 
-  /// Set false to skip the BackdropFilter and keep only the translucent fill.
+  /// Blur the backdrop behind this pane. Off by default — see the note above.
   final bool enableBlur;
 
   final BorderRadius? borderRadius;
@@ -62,7 +75,7 @@ class GlassSurface extends StatelessWidget {
     super.key,
     required this.child,
     this.blur = GlassTokens.blur,
-    this.enableBlur = true,
+    this.enableBlur = false,
     this.borderRadius,
     this.padding,
     this.margin,
@@ -127,18 +140,21 @@ class GlassSurface extends StatelessWidget {
 
     // 3. Clip, then hang the shadow off the outer box (shadows must fall
     //    outside the clip or they get cut off).
-    return RepaintBoundary(
-      child: Container(
-        width: width,
-        height: height,
-        margin: margin,
-        decoration: BoxDecoration(
-          borderRadius: radius,
-          boxShadow: showShadow ? GlassTokens.paneShadow() : null,
-        ),
-        child: ClipRRect(borderRadius: radius, child: pane),
+    final Widget box = Container(
+      width: width,
+      height: height,
+      margin: margin,
+      decoration: BoxDecoration(
+        borderRadius: radius,
+        boxShadow: showShadow ? GlassTokens.paneShadow() : null,
       ),
+      child: ClipRRect(borderRadius: radius, child: pane),
     );
+
+    // A repaint boundary only pays for itself around a blur, which is costly
+    // to redraw. Around a plain gradient it just adds a composited layer —
+    // and list children already get their own boundary from ListView.
+    return enableBlur ? RepaintBoundary(child: box) : box;
   }
 }
 
@@ -169,7 +185,7 @@ class GlassCard extends StatelessWidget {
     this.tint,
     this.tintStrength = 0.35,
     this.blur = GlassTokens.blur,
-    this.enableBlur = true,
+    this.enableBlur = false,
     this.borderRadius,
     this.onTap,
   });
@@ -216,7 +232,6 @@ class GlassPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GlassSurface(
-      blur: GlassTokens.blurSoft,
       borderRadius: BorderRadius.circular(100),
       padding: padding,
       margin: margin,

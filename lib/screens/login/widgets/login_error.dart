@@ -23,7 +23,6 @@ class LoginError extends StatelessWidget {
       borderRadius: BorderRadius.circular(GlassTokens.radiusSm + 2),
       tint: GlassTokens.danger,
       tintStrength: 0.20,
-      blur: GlassTokens.blurSoft,
       child: Row(
         children: [
           const Icon(

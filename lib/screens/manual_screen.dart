@@ -393,7 +393,6 @@ class ManualScreen extends StatelessWidget {
       borderRadius: BorderRadius.circular(GlassTokens.radiusSm),
       tint: GlassTokens.warning,
       tintStrength: 0.22,
-      blur: GlassTokens.blurSoft,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

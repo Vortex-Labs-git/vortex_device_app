@@ -7,18 +7,18 @@ import '../../theme/glass_theme.dart';
 // =============================================================================
 // GLASS BACKGROUND
 // =============================================================================
-// The backdrop every glass pane blurs. Without it the panes have nothing to
-// refract and the whole look collapses into flat grey boxes — so any screen
+// The backdrop the glass panes sit on. Without it they have nothing to show
+// through and the whole look collapses into flat grey boxes — so any screen
 // using glass widgets should sit inside one of these.
 //
 // It paints:
 //   1. a diagonal indigo → violet → cyan gradient
 //   2. three large, soft "orbs" (radial gradients fading to transparent),
-//      which give the blur something with structure to pick up
+//      which keep the backdrop from reading as a flat wash
 //
-// The orbs are radial gradients rather than blurred shapes on purpose: they
-// cost one gradient fill each, leaving the frame's filter budget for the
-// panes themselves.
+// The orbs are radial gradients rather than blurred shapes on purpose: one
+// gradient fill each, no image filter. The whole backdrop is a single cached
+// layer, so scrolling content on top of it never forces it to repaint.
 //
 // [animated] drifts the orbs on a slow 24s loop. It is off everywhere by
 // default: this app spends long stretches open on a bench next to hardware,
@@ -83,27 +83,28 @@ class _GlassBackgroundState extends State<GlassBackground>
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            GlassTokens.bgTop,
-            GlassTokens.bgMid,
-            GlassTokens.bgBottom,
-          ],
-          stops: [0.0, 0.55, 1.0],
+    // The gradient and orbs never change while a screen is idle or scrolling,
+    // so keep them in their own layer instead of repainting them under every
+    // frame of scrolling content.
+    final Widget backdrop = RepaintBoundary(
+      child: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              GlassTokens.bgTop,
+              GlassTokens.bgMid,
+              GlassTokens.bgBottom,
+            ],
+            stops: [0.0, 0.55, 1.0],
+          ),
         ),
-      ),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          if (widget.showOrbs) _buildOrbs(),
-          widget.child,
-        ],
+        child: widget.showOrbs ? _buildOrbs() : const SizedBox.expand(),
       ),
     );
+
+    return Stack(fit: StackFit.expand, children: [backdrop, widget.child]);
   }
 
   // ---------------------------------------------------------------------------

@@ -505,7 +505,6 @@ class _MotorCalibrationScreenState extends State<MotorCalibrationScreen> {
     return GlassSurface(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
       borderRadius: BorderRadius.circular(GlassTokens.radiusSm),
-      blur: GlassTokens.blurSoft,
       showShadow: false,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,

@@ -84,6 +84,9 @@ class GlassDialog extends StatelessWidget {
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 420),
           child: GlassSurface(
+            // Worth a blur: one at a time, and it sits over real screen
+            // content rather than the plain gradient.
+            enableBlur: true,
             blur: GlassTokens.blurStrong,
             // Denser than a card: dialog text must stay readable over whatever
             // happens to be behind it.

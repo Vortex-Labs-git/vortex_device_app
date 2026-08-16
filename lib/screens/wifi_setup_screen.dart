@@ -253,7 +253,6 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
       borderRadius: BorderRadius.circular(GlassTokens.radiusSm),
       tint: GlassTokens.danger,
       tintStrength: 0.20,
-      blur: GlassTokens.blurSoft,
       child: Row(
         children: [
           Icon(Icons.error_outline, color: Colors.red.shade700),

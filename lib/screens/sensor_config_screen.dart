@@ -533,7 +533,6 @@ class _SensorConfigScreenState extends State<SensorConfigScreen> {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       borderRadius: BorderRadius.circular(GlassTokens.radiusSm),
-      blur: GlassTokens.blurSoft,
       showShadow: false,
       child: Text(
         value.isNotEmpty ? value : '—',

@@ -159,7 +159,6 @@ class GlassGhostButton extends StatelessWidget {
         borderRadius: BorderRadius.circular(GlassTokens.radiusMd),
         tint: tint,
         tintStrength: 0.30,
-        blur: GlassTokens.blurSoft,
         onTap: disabled ? null : onPressed,
         child: Center(
           child: isLoading

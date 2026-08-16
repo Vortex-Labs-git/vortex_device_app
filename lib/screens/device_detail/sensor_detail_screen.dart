@@ -4,6 +4,8 @@ import 'dart:async';
 import '../../services/websocket_service.dart';
 import '../../services/esp_direct_service.dart';
 import '../../models/sensor_unit.dart';
+import '../../theme/glass_theme.dart';
+import '../../widgets/glass/glass.dart';
 import '../sensor_config_screen.dart';
 
 // =============================================================================
@@ -193,12 +195,10 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
   Widget build(BuildContext context) {
     final unit = _unit;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(_isDirectMode ? 'Direct Control' : 'Vortex Labs'),
-        backgroundColor:
-            _isDirectMode ? Colors.green[700] : const Color(0xFF3F51B5),
-        foregroundColor: Colors.white,
+    return GlassScaffold(
+      appBar: GlassAppBar(
+        title: _isDirectMode ? 'Direct Control' : 'Vortex Labs',
+        tint: _isDirectMode ? GlassTokens.success : null,
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 16),
@@ -206,7 +206,7 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
               _wsConnected
                   ? (_isDirectMode ? Icons.settings_remote : Icons.wifi)
                   : Icons.wifi_off,
-              color: _wsConnected ? Colors.greenAccent : Colors.red,
+              color: _wsConnected ? GlassTokens.success : GlassTokens.danger,
             ),
           ),
         ],
@@ -214,7 +214,12 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
       body: unit == null
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.fromLTRB(
+                16,
+                16,
+                16,
+                16 + MediaQuery.paddingOf(context).bottom,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -245,23 +250,13 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
         ? unit.name
         : (widget.deviceData['name']?.toString() ?? 'Sensor Unit');
 
-    return Container(
+    return GlassCard(
       // Highlighted so the unit summary stands apart from the sensor cards:
-      // light indigo tint + indigo border + soft shadow (a "lifted" look).
+      // indigo-tinted glass, where the per-sensor cards below are neutral.
       margin: const EdgeInsets.symmetric(horizontal: 4),
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFE8EAF6),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF3F51B5), width: 1.5),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x2E3F51B5),
-            blurRadius: 12,
-            offset: Offset(0, 4),
-          ),
-        ],
-      ),
+      tint: GlassTokens.primary,
+      tintStrength: 0.22,
       child: Column(
         children: [
           _infoRow('Product Type', Text(
@@ -302,7 +297,10 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
 
   // ----- One sensor: Sensor Type(S01) / Tag name / Sensor value -----
   Widget _buildSensorCard(Sensor sensor) {
-    return Card(
+    return GlassCard(
+      padding: EdgeInsets.zero,
+      // Material Card used to supply this gap through its default margin.
+      margin: const EdgeInsets.fromLTRB(4, 0, 4, 12),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(

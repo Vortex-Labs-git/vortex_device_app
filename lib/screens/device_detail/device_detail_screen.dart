@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import '../../services/device_control_api.dart';
 import '../motor_calibration_screen.dart';
 import '../../models/valve_device.dart';
+import '../../theme/glass_theme.dart';
+import '../../widgets/glass/glass.dart';
 
 // Controllers (live data + confirmation wait)
 import 'controllers/device_feeds.dart';
@@ -580,14 +582,13 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
         ? true
         : isDeviceOnline(_device['vwv_last_seen']?.toString());
 
-    return Scaffold(
-      backgroundColor: Colors.grey[100],
+    return GlassScaffold(
       // ─── App bar ───────────────────────────────────────────────────────
-      appBar: AppBar(
-        title: Text(_isDirectMode ? 'Direct Control' : 'Vortex Labs'),
-        backgroundColor:
-            _isDirectMode ? Colors.green[700] : const Color(0xFF3F51B5),
-        foregroundColor: Colors.white,
+      // Tinted green in direct mode, so "I'm talking straight to the valve"
+      // is visible in the chrome itself.
+      appBar: GlassAppBar(
+        title: _isDirectMode ? 'Direct Control' : 'Vortex Labs',
+        tint: _isDirectMode ? GlassTokens.success : null,
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 16),
@@ -595,14 +596,19 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
               _wsConnected
                   ? (_isDirectMode ? Icons.settings_remote : Icons.wifi)
                   : Icons.wifi_off,
-              color: _wsConnected ? Colors.greenAccent : Colors.red,
+              color: _wsConnected ? GlassTokens.success : GlassTokens.danger,
             ),
           ),
         ],
       ),
       // ─── Body ──────────────────────────────────────────────────────────
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.fromLTRB(
+          16,
+          16,
+          16,
+          16 + MediaQuery.paddingOf(context).bottom,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

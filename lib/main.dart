@@ -8,6 +8,7 @@ import 'controllers/esp_session.dart';
 import 'controllers/network_watcher.dart';
 import 'screens/main/main_screen.dart';
 import 'services/auth_service.dart';
+import 'theme/glass_theme.dart';
 
 void main() async {
   // 1. Required for async code in main
@@ -39,11 +40,9 @@ class VortaxLabsApp extends StatelessWidget {
     return MaterialApp(
       title: 'Vortex Labs',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        primarySwatch: Colors.indigo,
-        useMaterial3: true,
-        scaffoldBackgroundColor: Colors.white,
-      ),
+      // Frosted-glass look. Tokens and the ThemeData live in
+      // theme/glass_theme.dart; the panes themselves are in widgets/glass/.
+      theme: GlassTokens.themeData(),
       home: const MainScreen(),
     );
   }

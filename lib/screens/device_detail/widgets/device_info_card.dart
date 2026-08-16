@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../widgets/glass/glass.dart';
+
 // =============================================================================
 // DEVICE INFO CARD
 // =============================================================================
@@ -29,7 +31,8 @@ class DeviceInfoCard extends StatelessWidget {
         isDirectMode ? 'Direct Connected' : (isOnline ? 'online' : 'offline');
     final Color statusColor = isOnline ? Colors.green : Colors.red;
 
-    return Card(
+    return GlassCard(
+      padding: EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../widgets/glass/glass.dart';
+
 // =============================================================================
 // MODE TOGGLE CARD
 // =============================================================================
@@ -45,7 +47,8 @@ class ModeToggleCard extends StatelessWidget {
 
     @override
   Widget build(BuildContext context) {
-    return Card(
+    return GlassCard(
+      padding: EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Column(
@@ -135,7 +138,10 @@ class ModeToggleCard extends StatelessWidget {
                   ? Column(
                       children: [
                         const SizedBox(height: 8),
-                        Divider(color: Colors.grey[200], height: 1),
+                        Divider(
+                          color: Colors.white.withValues(alpha: 0.55),
+                          height: 1,
+                        ),
                         _automationRow(
                           icon: Icons.calendar_month,
                           color: _scheduleColor,
@@ -144,7 +150,10 @@ class ModeToggleCard extends StatelessWidget {
                           value: isScheduleMode,
                           onChanged: onScheduleChanged,
                         ),
-                        Divider(color: Colors.grey[200], height: 1),
+                        Divider(
+                          color: Colors.white.withValues(alpha: 0.55),
+                          height: 1,
+                        ),
                         _automationRow(
                           icon: Icons.sensors,
                           color: _sensorColor,

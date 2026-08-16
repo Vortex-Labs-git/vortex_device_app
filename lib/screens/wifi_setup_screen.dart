@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import '../services/esp_direct_service.dart';
 import '../services/auth_service.dart';
+import '../theme/glass_theme.dart';
+import '../widgets/glass/glass.dart';
 
 /// WiFi Setup Screen for ESP32 Direct Communication
 /// Message structure follows Vortex_WiFi_Valve_Software_Architecture.pdf
@@ -184,24 +186,28 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('WiFi Setup'),
-        backgroundColor: const Color(0xFF3F51B5),
-        foregroundColor: Colors.white,
+    return GlassScaffold(
+      appBar: GlassAppBar(
+        title: 'WiFi Setup',
         actions: [
           // Connection status indicator
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: Icon(
               _isConnectedToEsp ? Icons.wifi : Icons.wifi_off,
-              color: _isConnectedToEsp ? Colors.greenAccent : Colors.red,
+              color:
+                  _isConnectedToEsp ? GlassTokens.success : GlassTokens.danger,
             ),
           ),
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.fromLTRB(
+          16,
+          16,
+          16,
+          16 + MediaQuery.paddingOf(context).bottom,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -241,14 +247,13 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
   }
 
   Widget _buildErrorBanner() {
-    return Container(
+    return GlassCard(
       padding: const EdgeInsets.all(12),
       margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        color: Colors.red.shade50,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.red.shade200),
-      ),
+      borderRadius: BorderRadius.circular(GlassTokens.radiusSm),
+      tint: GlassTokens.danger,
+      tintStrength: 0.20,
+      blur: GlassTokens.blurSoft,
       child: Row(
         children: [
           Icon(Icons.error_outline, color: Colors.red.shade700),
@@ -270,7 +275,8 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
   }
 
   Widget _buildStep1Card() {
-    return Card(
+    return GlassCard(
+      padding: EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -317,7 +323,8 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
   }
 
   Widget _buildStep2Card() {
-    return Card(
+    return GlassCard(
+      padding: EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -398,7 +405,8 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
   }
 
   Widget _buildStep3Card() {
-    return Card(
+    return GlassCard(
+      padding: EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -474,8 +482,10 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
   }
 
   Widget _buildDeviceInfoCard() {
-    return Card(
-      color: Colors.blue.shade50,
+    return GlassCard(
+      padding: EdgeInsets.zero,
+      tint: GlassTokens.primary,
+      tintStrength: 0.18,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -509,8 +519,10 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
     final valveData = _valveData?['get_valvedata'] ?? {};
     final limitData = _valveData?['get_limitdata'] ?? {};
     
-    return Card(
-      color: Colors.green.shade50,
+    return GlassCard(
+      padding: EdgeInsets.zero,
+      tint: GlassTokens.success,
+      tintStrength: 0.18,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(

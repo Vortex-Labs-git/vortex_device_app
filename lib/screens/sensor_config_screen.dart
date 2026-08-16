@@ -3,6 +3,9 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
+import '../theme/glass_theme.dart';
+import '../widgets/glass/glass.dart';
+
 import '../services/esp_direct_service.dart';
 
 /// Sensor Configuration Screen (ESP32 direct mode)
@@ -345,11 +348,11 @@ class _SensorConfigScreenState extends State<SensorConfigScreen> {
   Widget build(BuildContext context) {
     final deviceName = widget.deviceData['name']?.toString() ?? 'Sensor Unit';
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Sensor Configuration'),
-        backgroundColor: Colors.green[700],
-        foregroundColor: Colors.white,
+    return GlassScaffold(
+      // Green-tinted chrome: this screen only exists in direct-to-device mode.
+      appBar: const GlassAppBar(
+        title: 'Sensor Configuration',
+        tint: GlassTokens.success,
       ),
       body: SafeArea(
         child: _isLoadingInitial
@@ -425,7 +428,8 @@ class _SensorConfigScreenState extends State<SensorConfigScreen> {
     final String header =
         'Sensor ${(index + 1).toString().padLeft(2, '0')}';
 
-    return Card(
+    return GlassCard(
+      padding: EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -525,19 +529,17 @@ class _SensorConfigScreenState extends State<SensorConfigScreen> {
   // ── Small UI helpers ────────────────────────────────────────────
 
   Widget _buildReadOnlyBox(String value) {
-    return Container(
+    return GlassSurface(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.grey[100],
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey[300]!),
-      ),
+      borderRadius: BorderRadius.circular(GlassTokens.radiusSm),
+      blur: GlassTokens.blurSoft,
+      showShadow: false,
       child: Text(
         value.isNotEmpty ? value : '—',
-        style: TextStyle(
+        style: const TextStyle(
           fontSize: 14,
-          color: Colors.grey[600],
+          color: GlassTokens.textSecondary,
           fontWeight: FontWeight.w500,
         ),
       ),

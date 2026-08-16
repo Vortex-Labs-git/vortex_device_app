@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../../../theme/glass_theme.dart';
+
+import '../../../widgets/glass/glass.dart';
+
 import '../../../models/valve_device.dart';
 
 // =============================================================================
@@ -38,7 +42,8 @@ class ScheduleCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    return GlassCard(
+      padding: EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -69,8 +74,11 @@ class ScheduleCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(vertical: 8),
               decoration: BoxDecoration(
-                color: Colors.grey[200],
+                color: GlassTokens.primary.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.6),
+                ),
               ),
               child: const Row(
                 children: [
@@ -180,7 +188,9 @@ class ScheduleCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 10),
         decoration: BoxDecoration(
-          border: Border(bottom: BorderSide(color: Colors.grey[200]!)),
+          border: Border(
+            bottom: BorderSide(color: Colors.white.withValues(alpha: 0.55)),
+          ),
         ),
         child: Row(
           children: [

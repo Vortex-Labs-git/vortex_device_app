@@ -1,6 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+
+import '../theme/glass_theme.dart';
+import '../widgets/glass/glass.dart';
 import 'package:flutter/services.dart';
 
 import '../services/esp_direct_service.dart';
@@ -343,12 +346,8 @@ class _MotorCalibrationScreenState extends State<MotorCalibrationScreen> {
             'Valve')
         .toString();
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Motor Calibration'),
-        backgroundColor: const Color(0xFF3F51B5),
-        foregroundColor: Colors.white,
-      ),
+    return GlassScaffold(
+      appBar: const GlassAppBar(title: 'Motor Calibration'),
       body: SafeArea(
         child: _isLoadingInitial
             ? const Center(child: CircularProgressIndicator())
@@ -503,13 +502,11 @@ class _MotorCalibrationScreenState extends State<MotorCalibrationScreen> {
   }
 
   Widget _buildReadOnlyValueBox(String value, {String? hint}) {
-    return Container(
+    return GlassSurface(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-      decoration: BoxDecoration(
-        color: Colors.grey[100],
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey[300]!),
-      ),
+      borderRadius: BorderRadius.circular(GlassTokens.radiusSm),
+      blur: GlassTokens.blurSoft,
+      showShadow: false,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -518,7 +515,9 @@ class _MotorCalibrationScreenState extends State<MotorCalibrationScreen> {
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
-              color: value == '—' ? Colors.grey : Colors.black87,
+              color: value == '—'
+                  ? GlassTokens.textMuted
+                  : GlassTokens.textPrimary,
             ),
           ),
         ],

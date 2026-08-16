@@ -613,7 +613,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
             const SizedBox(height: 16),
 
             // 9.2  Mode toggle (server mode only)
-            if (!_isDirectMode) ...[
+            if (!_isDirectMode && isOnline) ...[
               ModeToggleCard(
                 isAutomateMode: _isAutomateMode,
                 isScheduleMode: _isScheduleMode,
@@ -642,7 +642,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
 
             // 9.4  Schedule card — either from the mode toggle or the
             //      control-mode buttons
-            if (_isScheduleMode || _controlMode == 'schedule')
+            if (_isScheduleMode || _controlMode == 'schedule' || !isOnline)
               ScheduleCard(
                 schedules: _schedules,
                 isSavingSchedule: _isSavingSchedule,

@@ -124,8 +124,13 @@ class _HomeScreenState extends State<HomeScreen> {
         );
         break;
       case DeviceStatus.offline:
-        _showSnackBar(
-          'Device is offline. Connect to its hotspot or use the debug panel below.',
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => device.isSensor
+                ? SensorDetailScreen(deviceData: device.raw)
+                : DeviceDetailScreen(deviceData: device.raw),
+          ),
         );
         break;
     }

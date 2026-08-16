@@ -110,59 +110,19 @@ class ValveControlCard extends StatelessWidget {
             // SECTION 3: STATE MODE (toggle ON)
             // =========================================================
             if (valveControlEnabled) ...[
-              // 3.1  "By state" row with Open/Close switch
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'By state',
-                    style: TextStyle(color: Colors.grey),
-                  ),
-                  Row(
-                    children: [
-                      Text(
-                        isOpen ? 'Open' : 'Close',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w500,
-                          color:
-                              isOpen ? Colors.green[700] : Colors.red[700],
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      // Spinner while sending OR waiting; Switch otherwise
-                      (isUpdating || waitingForConfirmation)
-                          ? SizedBox(
-                              width: 48,
-                              height: 28,
-                              child: Center(
-                                child: SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: waitingForConfirmation
-                                        ? Colors.blue
-                                        : null,
-                                  ),
-                                ),
-                              ),
-                            )
-                          : Switch(
-                              value: isOpen,
-                              onChanged: onOpenCloseToggled,
-                              activeColor: Colors.green,
-                              inactiveTrackColor: Colors.red.shade200,
-                              inactiveThumbColor: Colors.red,
-                            ),
-                    ],
-                  ),
-                ],
-              ),
+              // 3.1  Current state readout (what the device/DB reports)
+              _buildCurrentStateRow(),
 
               const SizedBox(height: 12),
 
-              // 3.2  Actual position display
-              _buildActualPositionRow(),
+              // 3.2  Full-width action button — shows the OPPOSITE of
+              //      the current state (open now → offers "Close Valve")
+              _buildOpenCloseButton(),
+
+              // const SizedBox(height: 12),
+
+              // // 3.3  Actual position display
+              // _buildActualPositionRow(),
             ],
 
             // =========================================================
@@ -315,8 +275,8 @@ class ValveControlCard extends StatelessWidget {
 
               const SizedBox(height: 8),
 
-              // 4.6  Actual position display
-              _buildActualPositionRow(),
+              // // 4.6  Actual position display
+              // _buildActualPositionRow(),
             ],
           ],
         ),
@@ -350,6 +310,118 @@ class ValveControlCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Helper: current-state readout ("By state" + Open/Closed pill)
+  // ───────────────────────────────────────────────────────────────────────
+  Widget _buildCurrentStateRow() {
+    final Color stateColor =
+        isOpen ? Colors.green.shade700 : Colors.red.shade700;
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        const Text('By state', style: TextStyle(color: Colors.grey)),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: stateColor.withOpacity(0.10),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: stateColor.withOpacity(0.40)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: stateColor,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                isOpen ? 'Open' : 'Closed',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                  color: stateColor,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Helper: full-width open/close action button.
+  // The label is always the ACTION, not the state:
+  //   valve open   → "Close Valve" (red)
+  //   valve closed → "Open Valve"  (green)
+  // ───────────────────────────────────────────────────────────────────────
+  Widget _buildOpenCloseButton() {
+    final bool busy = isUpdating || waitingForConfirmation;
+
+    // Which action a press performs. While a command is in flight, `isOpen`
+    // already reports the pending target, so we read the in-flight command
+    // off pendingTargetAngle instead — that keeps the label/colour from
+    // flipping mid-wait.
+    final bool actionIsOpen =
+        (waitingForConfirmation && pendingTargetAngle != null)
+            ? pendingTargetAngle! >= 45
+            : !isOpen;
+
+    final Color actionColor = actionIsOpen
+        ? const Color(0xFF2E7D32) // green – will open
+        : const Color(0xFFC62828); // red   – will close
+
+    final String label = waitingForConfirmation
+        ? '${actionIsOpen ? "Opening" : "Closing"}... ${confirmationCountdown}s'
+        : isUpdating
+            ? 'Sending...'
+            : actionIsOpen
+                ? 'Open Valve'
+                : 'Close Valve';
+
+    return SizedBox(
+      width: double.infinity, // edge to edge inside the card padding
+      child: ElevatedButton.icon(
+        onPressed: busy ? null : () => onOpenCloseToggled(!isOpen),
+        icon: busy
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
+              )
+            : Icon(
+                actionIsOpen ? Icons.lock_open_rounded : Icons.lock_rounded,
+                size: 20,
+              ),
+        label: Text(
+          label,
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: actionColor,
+          foregroundColor: Colors.white,
+          disabledBackgroundColor: actionColor.withOpacity(0.6),
+          disabledForegroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+          elevation: 1,
+        ),
       ),
     );
   }

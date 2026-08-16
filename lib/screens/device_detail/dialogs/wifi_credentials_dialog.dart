@@ -148,8 +148,5 @@ Future<void> showWifiCredentialsDialog(BuildContext context) {
         );
       },
     ),
-  ).whenComplete(() {
-    ssidController.dispose();
-    passwordController.dispose();
-  });
+  );
 }

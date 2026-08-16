@@ -13,6 +13,7 @@ import '../../../models/valve_device.dart';
 class ScheduleCard extends StatelessWidget {
   final List<ScheduleEntry> schedules;
   final bool isSavingSchedule;
+  final bool readOnly; 
   final VoidCallback onAddPressed;
   final ValueChanged<int> onRowTapped;   // Tap a row to edit it
   final ValueChanged<int> onRowDeleted;
@@ -22,6 +23,7 @@ class ScheduleCard extends StatelessWidget {
     super.key,
     required this.schedules,
     required this.isSavingSchedule,
+    this.readOnly = false, 
     required this.onAddPressed,
     required this.onRowTapped,
     required this.onRowDeleted,

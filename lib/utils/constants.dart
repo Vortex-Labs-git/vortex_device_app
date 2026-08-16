@@ -14,7 +14,7 @@ class AppColors {
 }
 
 class AppStrings {
-  static const String appName = 'Vortax Labs';
+  static const String appName = 'Vortex Labs';
   static const String version = '1.0.0';
   static const String home = 'Home';
   static const String user = 'User';

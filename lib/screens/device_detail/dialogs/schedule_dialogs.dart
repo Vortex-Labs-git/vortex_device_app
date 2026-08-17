@@ -93,7 +93,7 @@ Future<ScheduleEntry?> showScheduleEntryDialog(
                         child: timeField(
                           label: 'From',
                           value: startTime,
-                          iconColor: Colors.green[600]!,
+                          iconColor: GlassTokens.success,
                           onPicked: (v) => setDialogState(() => startTime = v),
                         ),
                       ),
@@ -102,7 +102,7 @@ Future<ScheduleEntry?> showScheduleEntryDialog(
                         child: timeField(
                           label: 'To',
                           value: endTime,
-                          iconColor: Colors.red[600]!,
+                          iconColor: GlassTokens.danger,
                           onPicked: (v) => setDialogState(() => endTime = v),
                         ),
                       ),

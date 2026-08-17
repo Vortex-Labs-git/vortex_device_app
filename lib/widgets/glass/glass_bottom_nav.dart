@@ -128,7 +128,7 @@ class GlassBottomNav extends StatelessWidget {
                                   colors: [
                                     GlassTokens.primaryBright
                                         .withValues(alpha: 0.20),
-                                    GlassTokens.violet.withValues(alpha: 0.16),
+                                    GlassTokens.aqua.withValues(alpha: 0.16),
                                   ],
                                 ),
                                 border: Border.all(

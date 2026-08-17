@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../theme/glass_theme.dart';
+
 import '../../../widgets/glass/glass.dart';
 
 // =============================================================================
@@ -30,9 +32,9 @@ class ModeToggleCard extends StatelessWidget {
     required this.onSensorChanged,
   });
 
-  static const Color _manualColor = Color(0xFF3F51B5);
-  static const Color _scheduleColor = Colors.orange;
-  static const Color _sensorColor = Colors.teal;
+  static const Color _manualColor = GlassTokens.primary;
+  static const Color _scheduleColor = GlassTokens.warning;
+  static const Color _sensorColor = GlassTokens.info;
 
   /// One-line description of the mode the current switches add up to.
   String get _modeSummary {
@@ -62,7 +64,7 @@ class ModeToggleCard extends StatelessWidget {
               style: TextStyle(
                 fontWeight: FontWeight.bold,
                 fontSize: 16,
-                color: Colors.grey[800],
+                color: GlassTokens.textSecondary,
               ),
             ),
 
@@ -91,7 +93,7 @@ class ModeToggleCard extends StatelessWidget {
                             '  /  ',
                             style: TextStyle(
                               fontSize: 14,
-                              color: Colors.grey[400],
+                              color: GlassTokens.textMuted,
                             ),
                           ),
                           _modeLabel('Automate', isAutomateMode, _scheduleColor),
@@ -102,7 +104,7 @@ class ModeToggleCard extends StatelessWidget {
                         _modeSummary,
                         style: TextStyle(
                           fontSize: 11,
-                          color: Colors.grey[500],
+                          color: GlassTokens.textMuted,
                         ),
                       ),
                     ],
@@ -121,7 +123,7 @@ class ModeToggleCard extends StatelessWidget {
                     value: isAutomateMode,
                     activeColor: _scheduleColor,
                     inactiveThumbColor: _manualColor,
-                    inactiveTrackColor: _manualColor.withOpacity(0.3),
+                    inactiveTrackColor: _manualColor.withValues(alpha: 0.3),
                     onChanged: onAutomateChanged,
                   ),
               ],
@@ -187,7 +189,7 @@ class ModeToggleCard extends StatelessWidget {
       padding: const EdgeInsets.only(left: 8, top: 4, bottom: 4),
       child: Row(
         children: [
-          Icon(icon, size: 20, color: value ? color : Colors.grey[400]),
+          Icon(icon, size: 20, color: value ? color : GlassTokens.textMuted),
 
           const SizedBox(width: 12),
 
@@ -200,13 +202,13 @@ class ModeToggleCard extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: value ? FontWeight.bold : FontWeight.normal,
-                    color: value ? color : Colors.grey[700],
+                    color: value ? color : GlassTokens.textSecondary,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   description,
-                  style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                  style: TextStyle(fontSize: 11, color: GlassTokens.textMuted),
                 ),
               ],
             ),
@@ -215,8 +217,8 @@ class ModeToggleCard extends StatelessWidget {
           Switch(
             value: value,
             activeColor: color,
-            inactiveThumbColor: Colors.grey,
-            inactiveTrackColor: Colors.grey.withOpacity(0.3),
+            inactiveThumbColor: Colors.white,
+            inactiveTrackColor: GlassTokens.textMuted.withValues(alpha: 0.25),
             // Locked while a request is in flight.
             onChanged: isSwitching ? null : onChanged,
           ),
@@ -234,7 +236,7 @@ class ModeToggleCard extends StatelessWidget {
       style: TextStyle(
         fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
         fontSize: 14,
-        color: isActive ? activeColor : Colors.grey,
+        color: isActive ? activeColor : GlassTokens.textMuted,
       ),
     );
   }
@@ -247,7 +249,7 @@ class ModeToggleCard extends StatelessWidget {
       width: 40,
       height: 40,
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Icon(icon, color: color, size: 22),

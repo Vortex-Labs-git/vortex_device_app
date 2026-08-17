@@ -139,7 +139,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
       },
       onSuccess: () => _showMessage(
         '✅ Valve position confirmed!',
-        color: Colors.green,
+        color: GlassTokens.success,
         duration: const Duration(seconds: 2),
       ),
       onTimeout: _onConfirmationTimeout,
@@ -344,9 +344,9 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
         if (schedule || sensor) _isAutomateMode = true;
       });
       _showMessage(_controlMethodMessage(schedule: schedule, sensor: sensor),
-          color: Colors.blue, duration: const Duration(seconds: 2));
+          color: GlassTokens.primary, duration: const Duration(seconds: 2));
     } else {
-      _showMessage(result.displayMessage, color: Colors.red);
+      _showMessage(result.displayMessage, color: GlassTokens.danger);
     }
 
     setState(() => _isSwitchingMode = false);
@@ -373,7 +373,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
       _sendDirectAngle(targetAngle);
       _showMessage(
         'Direct command sent! Valve ${opening ? "opening" : "closing"}...',
-        color: Colors.blue,
+        color: GlassTokens.primary,
         duration: const Duration(seconds: 2),
       );
       setState(() => _isUpdating = false);
@@ -392,11 +392,11 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
       _startConfirmationWait(targetAngle);
       _showMessage(
         'Command sent! Waiting for valve to ${opening ? "open" : "close"}...',
-        color: Colors.blue,
+        color: GlassTokens.primary,
         duration: const Duration(seconds: 2),
       );
     } else {
-      _showMessage(result.displayMessage, color: Colors.red);
+      _showMessage(result.displayMessage, color: GlassTokens.danger);
     }
 
     setState(() => _isUpdating = false);
@@ -409,7 +409,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
       _sendDirectAngle(angle);
       _showMessage(
         'Direct command sent! Setting angle to $angle°...',
-        color: Colors.blue,
+        color: GlassTokens.primary,
         duration: const Duration(seconds: 2),
       );
       setState(() => _isAngleUpdating = false);
@@ -428,11 +428,11 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
       _startConfirmationWait(angle);
       _showMessage(
         'Command sent! Waiting for valve to reach $angle°...',
-        color: Colors.blue,
+        color: GlassTokens.primary,
         duration: const Duration(seconds: 2),
       );
     } else {
-      _showMessage(result.displayMessage, color: Colors.red);
+      _showMessage(result.displayMessage, color: GlassTokens.danger);
     }
 
     setState(() => _isAngleUpdating = false);
@@ -459,7 +459,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
     if (_actualPosition == targetAngle) {
       _showMessage(
         '✅ Valve position confirmed!',
-        color: Colors.green,
+        color: GlassTokens.success,
         duration: const Duration(seconds: 2),
       );
       return;
@@ -467,7 +467,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
 
     _showMessage(
       '⏳ Valve is still responding. Position will update shortly.',
-      color: Colors.orange,
+      color: GlassTokens.warning,
       duration: const Duration(seconds: 3),
     );
   }
@@ -516,9 +516,9 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
     if (result.success) {
       // Saved — the server is authoritative again.
       setState(() => _schedulesLocallyEdited = false);
-      _showMessage('Schedule saved successfully!', color: Colors.green);
+      _showMessage('Schedule saved successfully!', color: GlassTokens.success);
     } else {
-      _showMessage(result.displayMessage, color: Colors.red);
+      _showMessage(result.displayMessage, color: GlassTokens.danger);
     }
 
     setState(() => _isSavingSchedule = false);
@@ -540,7 +540,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
       _device['vwv_name'] = newName;
       _device['device_name'] = newName;
     });
-    _showMessage('Device name updated!', color: Colors.green);
+    _showMessage('Device name updated!', color: GlassTokens.success);
   }
 
   Future<bool> _saveDeviceName(String newName) async {
@@ -552,7 +552,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
     );
 
     if (!result.success) {
-      _showMessage(result.displayMessage, color: Colors.red);
+      _showMessage(result.displayMessage, color: GlassTokens.danger);
     }
     return result.success;
   }

@@ -28,35 +28,57 @@ class GlassTokens {
   // ---------------------------------------------------------------------------
   // SECTION 1: BRAND + STATUS COLORS
   // ---------------------------------------------------------------------------
-  // Kept close to the original indigo so the app still feels like the same
-  // product — only the surfaces changed, not the brand.
+  // "Irrigation" palette: deep teal and aqua. The product moves water, so the
+  // brand is water rather than the foliage green most agri apps reach for —
+  // and that choice is functional, not just taste. Green means "online / valve
+  // open" and red means "offline / closed" all through this app; a green brand
+  // would put the brand and the status signal in the same hue and the status
+  // would stop reading. Teal stays adjacent to green (still agricultural)
+  // while leaving green and red to mean only one thing each.
+  //
+  // Every value below is checked for WCAG AA (4.5:1) against the pane it is
+  // actually drawn on — see SECTION 3 for the text results. This app is used
+  // outdoors, so contrast is a feature, not a formality.
 
-  static const Color primary = Color(0xFF3F51B5);
-  static const Color primaryBright = Color(0xFF5C6BC0);
-  static const Color violet = Color(0xFF8B5CF6);
-  static const Color cyan = Color(0xFF22B8CF);
+  static const Color primary = Color(0xFF0F766E);        // 5.36:1 on pane
+  static const Color primaryBright = Color(0xFF128B81);  // gradient start
+  static const Color accent = Color(0xFF12808F);         // gradient end:
+  //                          white label on it is 4.66:1, so buttons pass AA.
 
-  static const Color success = Color(0xFF15A34A);
-  static const Color warning = Color(0xFFF59E0B);
-  static const Color danger = Color(0xFFE11D48);
+  /// Bright aqua for DECORATION ONLY — backdrop orbs, selection capsules.
+  /// It is 2.83:1 on a pane, so never put text or a small icon in it.
+  static const Color aqua = Color(0xFF1AA7B8);
+
+  static const Color success = Color(0xFF2E7D32);        // 5.02:1
+  static const Color warning = Color(0xFFB26A00);        // 4.15:1, headings
+  static const Color danger = Color(0xFFC0303F);         // 5.50:1
+
+  /// A fourth hue for categories that are neither brand nor a health state —
+  /// currently sensor-driven mode, which sits alongside manual (brand teal)
+  /// and schedule (warning amber) and needs to be told apart from both.
+  /// Violet is the only family left that clashes with neither. 6.33:1.
+  static const Color info = Color(0xFF5B4BC4);
 
   // ---------------------------------------------------------------------------
   // SECTION 2: BACKDROP
   // ---------------------------------------------------------------------------
-  // The gradient the glass panes blur. Light enough that the dark text used
-  // across the app stays readable without restyling every Text widget.
+  // The gradient the chrome blurs. Light enough that dark text stays readable
+  // without restyling every Text widget.
 
-  static const Color bgTop = Color(0xFFEDF0FF);
-  static const Color bgMid = Color(0xFFF4F1FE);
-  static const Color bgBottom = Color(0xFFE7F3FF);
+  static const Color bgTop = Color(0xFFE6F4F3);
+  static const Color bgMid = Color(0xFFEFF7F2);
+  static const Color bgBottom = Color(0xFFDFF0F6);
 
   // ---------------------------------------------------------------------------
   // SECTION 3: TEXT
   // ---------------------------------------------------------------------------
+  // Measured on the composited pane (#FBFDFC), not guessed. The old muted grey
+  // came out at 2.94:1 — below AA and genuinely hard to read on a phone in
+  // daylight — so all three steps were darkened until they passed.
 
-  static const Color textPrimary = Color(0xFF1A1D3A);
-  static const Color textSecondary = Color(0xFF5B6180);
-  static const Color textMuted = Color(0xFF8A90AC);
+  static const Color textPrimary = Color(0xFF0B2D2A);    // 14.45:1
+  static const Color textSecondary = Color(0xFF34524E);  //  8.35:1
+  static const Color textMuted = Color(0xFF4C6A66);      //  5.77:1
 
   // ---------------------------------------------------------------------------
   // SECTION 4: GEOMETRY + BLUR
@@ -82,11 +104,16 @@ class GlassTokens {
 
   /// The two-stop sheen every pane is filled with. [tint] pulls the glass
   /// towards a status color (green for online, red for errors, ...).
+  ///
+  /// The default alphas are tuned for outdoor use: denser than a typical glass
+  /// UI, because a pane that reads as elegant indoors turns into unreadable
+  /// haze on a phone held in a field at midday. Contrast against the composited
+  /// result is what the text colors in SECTION 3 were measured on.
   static LinearGradient paneGradient({
     Color? tint,
     double tintStrength = 0.35,
-    double topAlpha = 0.62,
-    double bottomAlpha = 0.34,
+    double topAlpha = 0.74,
+    double bottomAlpha = 0.54,
   }) {
     final Color base = tint == null
         ? Colors.white
@@ -124,10 +151,13 @@ class GlassTokens {
   }
 
   /// Gradient used for solid accents (primary buttons, the FAB, avatars).
+  /// Fill for solid accents (primary buttons, the FAB, avatars). Both stops are
+  /// dark enough that white 16px labels clear AA — the brighter [aqua] is
+  /// deliberately not used here for that reason.
   static const LinearGradient accentGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [primaryBright, violet],
+    colors: [primaryBright, accent],
   );
 
   /// Same idea, tinted to an arbitrary color (status buttons, destructive

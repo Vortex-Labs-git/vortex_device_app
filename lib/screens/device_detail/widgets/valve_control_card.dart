@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../theme/glass_theme.dart';
+
 import '../../../widgets/glass/glass.dart';
 import 'dart:math' as math;
 
@@ -84,7 +86,7 @@ class ValveControlCard extends StatelessWidget {
                     onChanged: waitingForConfirmation
                         ? null
                         : onValveControlEnabledChanged,
-                    activeColor: const Color(0xFF3F51B5),
+                    activeColor: GlassTokens.primary,
                   ),
                 ),
               ],
@@ -100,7 +102,7 @@ class ValveControlCard extends StatelessWidget {
                     ? 'Mode: Open / Close'
                     : 'Mode: Angle control',
                 style: TextStyle(
-                  color: Colors.grey[600],
+                  color: GlassTokens.textMuted,
                   fontSize: 12,
                   fontStyle: FontStyle.italic,
                 ),
@@ -132,7 +134,7 @@ class ValveControlCard extends StatelessWidget {
             // SECTION 4: ANGLE MODE (toggle OFF)
             // =========================================================
             if (!valveControlEnabled) ...[
-              const Text('By angle', style: TextStyle(color: Colors.grey)),
+              const Text('By angle', style: TextStyle(color: GlassTokens.textMuted)),
               const SizedBox(height: 12),
 
               // 4.1  (waiting banner removed — the Set Angle button below
@@ -153,7 +155,7 @@ class ValveControlCard extends StatelessWidget {
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           border: Border.all(
-                            color: Colors.grey[300]!,
+                            color: GlassTokens.primary.withValues(alpha: 0.16),
                             width: 8,
                           ),
                         ),
@@ -166,8 +168,8 @@ class ValveControlCard extends StatelessWidget {
                           height: 50,
                           decoration: BoxDecoration(
                             color: waitingForConfirmation
-                                ? Colors.blue
-                                : const Color(0xFF3F51B5),
+                                ? GlassTokens.primary
+                                : GlassTokens.primary,
                             borderRadius: BorderRadius.circular(2),
                           ),
                         ),
@@ -178,8 +180,8 @@ class ValveControlCard extends StatelessWidget {
                         height: 12,
                         decoration: BoxDecoration(
                           color: waitingForConfirmation
-                              ? Colors.blue
-                              : const Color(0xFF3F51B5),
+                              ? GlassTokens.primary
+                              : GlassTokens.primary,
                           shape: BoxShape.circle,
                         ),
                       ),
@@ -198,8 +200,8 @@ class ValveControlCard extends StatelessWidget {
                     fontSize: 24,
                     fontWeight: FontWeight.bold,
                     color: waitingForConfirmation
-                        ? Colors.blue
-                        : const Color(0xFF3F51B5),
+                        ? GlassTokens.primary
+                        : GlassTokens.primary,
                   ),
                 ),
               ),
@@ -211,7 +213,7 @@ class ValveControlCard extends StatelessWidget {
                 children: [
                   const Text(
                     '0°',
-                    style: TextStyle(color: Colors.grey, fontSize: 12),
+                    style: TextStyle(color: GlassTokens.textMuted, fontSize: 12),
                   ),
                   Expanded(
                     child: Slider(
@@ -220,9 +222,9 @@ class ValveControlCard extends StatelessWidget {
                       max: 90,
                       divisions: 90,
                       activeColor: waitingForConfirmation
-                          ? Colors.grey
-                          : const Color(0xFF3F51B5),
-                      inactiveColor: Colors.grey[300],
+                          ? GlassTokens.textMuted
+                          : GlassTokens.primary,
+                      inactiveColor: GlassTokens.primary.withValues(alpha: 0.18),
                       label: '${sliderAngle.round()}°',
                       onChanged: waitingForConfirmation ? null : onSliderChanged,
                       onChangeStart: waitingForConfirmation
@@ -235,7 +237,7 @@ class ValveControlCard extends StatelessWidget {
                   ),
                   const Text(
                     '90°',
-                    style: TextStyle(color: Colors.grey, fontSize: 12),
+                    style: TextStyle(color: GlassTokens.textMuted, fontSize: 12),
                   ),
                 ],
               ),
@@ -267,10 +269,10 @@ class ValveControlCard extends StatelessWidget {
                             : 'Set Angle to ${sliderAngle.round()}°',
                   ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF3F51B5),
+                    backgroundColor: GlassTokens.primary,
                     foregroundColor: Colors.white,
                     disabledBackgroundColor:
-                        const Color(0xFF3F51B5).withOpacity(0.6),
+                        GlassTokens.primary.withValues(alpha: 0.6),
                     padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
                 ),
@@ -294,7 +296,7 @@ class ValveControlCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: Colors.grey[50],
+        color: Colors.white.withValues(alpha: 0.55),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Row(
@@ -302,14 +304,14 @@ class ValveControlCard extends StatelessWidget {
         children: [
           Text(
             'Actual position',
-            style: TextStyle(color: Colors.grey[600], fontSize: 12),
+            style: TextStyle(color: GlassTokens.textMuted, fontSize: 12),
           ),
           Text(
             '$actualPosition°',
             style: TextStyle(
               fontWeight: FontWeight.bold,
               fontSize: 14,
-              color: actualPosition >= 45 ? Colors.green[700] : Colors.red[700],
+              color: actualPosition >= 45 ? GlassTokens.success : GlassTokens.danger,
             ),
           ),
         ],
@@ -323,18 +325,18 @@ class ValveControlCard extends StatelessWidget {
   // ───────────────────────────────────────────────────────────────────────
   Widget _buildCurrentStateRow() {
     final Color stateColor =
-        isOpen ? Colors.green.shade700 : Colors.red.shade700;
+        isOpen ? GlassTokens.success : GlassTokens.danger;
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        const Text('By state', style: TextStyle(color: Colors.grey)),
+        const Text('By state', style: TextStyle(color: GlassTokens.textMuted)),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           decoration: BoxDecoration(
-            color: stateColor.withOpacity(0.10),
+            color: stateColor.withValues(alpha: 0.10),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: stateColor.withOpacity(0.40)),
+            border: Border.all(color: stateColor.withValues(alpha: 0.40)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -417,7 +419,7 @@ class ValveControlCard extends StatelessWidget {
         style: ElevatedButton.styleFrom(
           backgroundColor: actionColor,
           foregroundColor: Colors.white,
-          disabledBackgroundColor: actionColor.withOpacity(0.6),
+          disabledBackgroundColor: actionColor.withValues(alpha: 0.6),
           disabledForegroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(vertical: 14),
           shape: RoundedRectangleBorder(

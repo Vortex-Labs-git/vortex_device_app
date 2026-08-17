@@ -9,8 +9,8 @@ import '../theme/glass_theme.dart';
 /// widgets/glass/), not the flat [background] / [cardBackground] fills below.
 class AppColors {
   static const Color primary = GlassTokens.primary;
-  static const Color primaryDark = Color(0xFF303F9F);
-  static const Color primaryLight = Color(0xFFC5CAE9);
+  static const Color primaryDark = Color(0xFF0B5A54);
+  static const Color primaryLight = Color(0xFFBFE0DC);
   static const Color accent = GlassTokens.primaryBright;
   static const Color success = GlassTokens.success;
   static const Color warning = GlassTokens.warning;

@@ -12,7 +12,7 @@ import '../../theme/glass_theme.dart';
 // using glass widgets should sit inside one of these.
 //
 // It paints:
-//   1. a diagonal indigo → violet → cyan gradient
+//   1. a diagonal teal → mint → aqua gradient
 //   2. three large, soft "orbs" (radial gradients fading to transparent),
 //      which keep the backdrop from reading as a flat wash
 //
@@ -131,7 +131,7 @@ class _GlassBackgroundState extends State<GlassBackground>
             right: -110,
             child: _orb(
               size: 320,
-              color: GlassTokens.violet,
+              color: GlassTokens.aqua,
               alpha: 0.30,
               phase: 2.1,
             ),
@@ -141,7 +141,7 @@ class _GlassBackgroundState extends State<GlassBackground>
             left: -50,
             child: _orb(
               size: 300,
-              color: GlassTokens.cyan,
+              color: GlassTokens.success,
               alpha: 0.30,
               phase: 4.2,
             ),

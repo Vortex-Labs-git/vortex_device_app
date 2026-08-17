@@ -120,8 +120,8 @@ class GlassSurface extends StatelessWidget {
         gradient: GlassTokens.paneGradient(
           tint: tint,
           tintStrength: tintStrength,
-          topAlpha: 0.62 * opacity,
-          bottomAlpha: 0.34 * opacity,
+          topAlpha: 0.74 * opacity,
+          bottomAlpha: 0.54 * opacity,
         ),
         borderRadius: radius,
         border: showBorder

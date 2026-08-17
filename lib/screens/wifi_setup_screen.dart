@@ -255,18 +255,18 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
       tintStrength: 0.20,
       child: Row(
         children: [
-          Icon(Icons.error_outline, color: Colors.red.shade700),
+          Icon(Icons.error_outline, color: GlassTokens.danger),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
               _errorMessage!,
-              style: TextStyle(color: Colors.red.shade700),
+              style: TextStyle(color: GlassTokens.danger),
             ),
           ),
           IconButton(
             icon: const Icon(Icons.close, size: 20),
             onPressed: () => setState(() => _errorMessage = null),
-            color: Colors.red.shade700,
+            color: GlassTokens.danger,
           ),
         ],
       ),
@@ -288,13 +288,13 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.blue.shade50,
+                color: GlassTokens.primary,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.blue.shade200),
+                border: Border.all(color: GlassTokens.primary),
               ),
               child: const Row(
                 children: [
-                  Icon(Icons.wifi, color: Color(0xFF3F51B5), size: 32),
+                  Icon(Icons.wifi, color: GlassTokens.primary, size: 32),
                   SizedBox(width: 16),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -303,7 +303,7 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
                         'VortexValve_XXX',
                         style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
                       ),
-                      Text('Password: vortex1234', style: TextStyle(color: Colors.grey)),
+                      Text('Password: vortex1234', style: TextStyle(color: GlassTokens.textMuted)),
                     ],
                   ),
                 ],
@@ -313,7 +313,7 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
             Text(
               'The valve creates a WiFi hotspot when in AP mode. '
               'Connect to it first, then tap "Connect to Valve" below.',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+              style: TextStyle(color: GlassTokens.textMuted, fontSize: 12),
             ),
           ],
         ),
@@ -335,13 +335,13 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.green.shade50,
+                  color: GlassTokens.success,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.green.shade200),
+                  border: Border.all(color: GlassTokens.success),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.check_circle, color: Colors.green),
+                    const Icon(Icons.check_circle, color: GlassTokens.success),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Column(
@@ -350,7 +350,7 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
                           Text(
                             'Connected to ${_deviceInfo?['device_name'] ?? 'ESP32'}',
                             style: const TextStyle(
-                              color: Colors.green,
+                              color: GlassTokens.success,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -358,7 +358,7 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
                             Text(
                               'ID: ${_deviceInfo!['device_id']}',
                               style: TextStyle(
-                                color: Colors.green.shade700,
+                                color: GlassTokens.success,
                                 fontSize: 12,
                               ),
                             ),
@@ -391,7 +391,7 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
                       : const Icon(Icons.link),
                   label: Text(_isConnecting ? 'Connecting...' : 'Connect to Valve'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF3F51B5),
+                    backgroundColor: GlassTokens.primary,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
@@ -415,7 +415,7 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
             const SizedBox(height: 8),
             Text(
               'Enter the WiFi network the valve should connect to for normal operation.',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+              style: TextStyle(color: GlassTokens.textMuted, fontSize: 12),
             ),
             const SizedBox(height: 16),
             
@@ -461,7 +461,7 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
                     : const Icon(Icons.save),
                 label: Text(_isSavingWifi ? 'Saving...' : 'Save & Connect'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
+                  backgroundColor: GlassTokens.success,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
@@ -471,7 +471,7 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
             const SizedBox(height: 8),
             Text(
               'After saving, the device will restart and connect to your home WiFi.',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+              style: TextStyle(color: GlassTokens.textMuted, fontSize: 12),
               textAlign: TextAlign.center,
             ),
           ],
@@ -492,7 +492,7 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
           children: [
             Row(
               children: [
-                const Icon(Icons.info_outline, color: Color(0xFF3F51B5)),
+                const Icon(Icons.info_outline, color: GlassTokens.primary),
                 const SizedBox(width: 8),
                 const Text(
                   'Device Information',
@@ -529,7 +529,7 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
           children: [
             Row(
               children: [
-                const Icon(Icons.settings, color: Colors.green),
+                const Icon(Icons.settings, color: GlassTokens.success),
                 const SizedBox(width: 8),
                 const Text(
                   'Valve Status',
@@ -574,7 +574,7 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
         Container(
           width: 28, height: 28,
           decoration: const BoxDecoration(
-            color: Color(0xFF3F51B5),
+            color: GlassTokens.primary,
             shape: BoxShape.circle,
           ),
           child: Center(
@@ -596,12 +596,12 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: TextStyle(color: isError ? Colors.red : Colors.grey)),
+          Text(label, style: TextStyle(color: isError ? GlassTokens.danger : GlassTokens.textMuted)),
           Text(
             value ?? 'N/A',
             style: TextStyle(
               fontWeight: FontWeight.w500,
-              color: isError ? Colors.red : null,
+              color: isError ? GlassTokens.danger : null,
             ),
           ),
         ],

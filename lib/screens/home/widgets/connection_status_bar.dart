@@ -6,18 +6,21 @@ import '../../../widgets/glass/glass.dart';
 // =============================================================================
 // CONNECTION STATUS BAR
 // =============================================================================
-// Status capsule above the device list. Three possible states:
+// Tappable status capsule above the device list. Three possible states:
 //   - GREEN  "Live updates active"            (server WS connected)
 //   - INDIGO "Direct mode — <ssid>"           (phone is on a Vortex_VA AP)
 //   - ORANGE "Offline — showing cached..."    (no server, no AP)
 //
-// Drawn as a tinted glass pill rather than a full-bleed bar: it floats over
-// the backdrop with the rest of the UI instead of cutting the screen in two.
+// The one-line summary rarely tells the user what a state actually means for
+// them, so tapping expands an explanation of what works in that mode. When
+// updates are live the dot pulses, which distinguishes "connected right now"
+// from a label that might be stale at a glance.
 //
-// All values are derived in the parent and passed in.
+// This widget is display-only: it takes the same three values from the parent
+// as before and never talks to the services itself. Expansion is local state.
 // =============================================================================
 
-class ConnectionStatusBar extends StatelessWidget {
+class ConnectionStatusBar extends StatefulWidget {
   final bool wsConnected;
   final bool isEspApMode;
   final String? connectedSsid;
@@ -30,58 +33,210 @@ class ConnectionStatusBar extends StatelessWidget {
   });
 
   @override
+  State<ConnectionStatusBar> createState() => _ConnectionStatusBarState();
+}
+
+class _ConnectionStatusBarState extends State<ConnectionStatusBar>
+    with SingleTickerProviderStateMixin {
+  bool _expanded = false;
+  late final AnimationController _pulse;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1600),
+    );
+    _syncPulse();
+  }
+
+  @override
+  void didUpdateWidget(ConnectionStatusBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.wsConnected != oldWidget.wsConnected) _syncPulse();
+  }
+
+  /// The halo only runs while updates are actually live — a pulsing dot on a
+  /// stale or offline state would be a lie, and an always-on animation is not
+  /// worth the battery.
+  void _syncPulse() {
+    if (widget.wsConnected) {
+      _pulse.repeat();
+    } else {
+      _pulse.stop();
+      _pulse.value = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     // ─────────────────────────────────────────────────────────────
-    // Decide tint, text, and icon based on connection state
+    // Resolve tint, label, icon and the expanded explanation
     // ─────────────────────────────────────────────────────────────
-    Color tint;
-    String barText;
-    IconData barIcon;
+    final Color tint;
+    final String label;
+    final IconData icon;
+    final String detail;
 
-    if (wsConnected) {
+    if (widget.wsConnected) {
       tint = GlassTokens.success;
-      barText = "Live updates active";
-      barIcon = Icons.wifi;
-    } else if (isEspApMode) {
+      label = 'Live updates active';
+      icon = Icons.wifi;
+      detail = 'Connected to the Vortex cloud. Valve changes show up here as '
+          'they happen, and you can control devices from anywhere.';
+    } else if (widget.isEspApMode) {
       tint = GlassTokens.primary;
-      barText = "Direct mode — ${connectedSsid ?? 'Valve WiFi'}";
-      barIcon = Icons.settings_remote;
+      label = 'Direct mode — ${widget.connectedSsid ?? 'Valve WiFi'}';
+      icon = Icons.settings_remote;
+      detail = 'Talking straight to the valve over its own WiFi. Manual '
+          'control works; schedule and sensor features need a cloud '
+          'connection.';
     } else {
       tint = GlassTokens.warning;
-      barText = "Offline — showing cached devices";
-      barIcon = Icons.wifi_off;
+      label = 'Offline — showing cached devices';
+      icon = Icons.wifi_off;
+      detail = 'No connection to the Vortex cloud. This is the device list '
+          'saved on your phone — pull down to retry.';
     }
 
     final Color foreground = Color.lerp(tint, Colors.black, 0.35)!;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-      child: GlassPill(
+      child: GlassSurface(
         tint: tint,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+        tintStrength: 0.42,
+        // 20 is exactly half the collapsed height, so this reads as a capsule
+        // when closed and a rounded card when open — no radius animation, and
+        // nothing snaps mid-expand.
+        borderRadius: BorderRadius.circular(20),
+        showShadow: false,
+        onTap: () => setState(() => _expanded = !_expanded),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        child: AnimatedSize(
+          duration: const Duration(milliseconds: 240),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // ── Summary row ──
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _StatusDot(tint: tint, icon: icon, pulse: _pulse),
+                  const SizedBox(width: 9),
+                  Flexible(
+                    child: Text(
+                      label,
+                      style: TextStyle(
+                        color: foreground,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  AnimatedRotation(
+                    turns: _expanded ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 240),
+                    curve: Curves.easeOutCubic,
+                    child: Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      size: 18,
+                      color: foreground.withValues(alpha: 0.75),
+                    ),
+                  ),
+                ],
+              ),
+
+              // ── Explanation, revealed on tap ──
+              if (_expanded) ...[
+                const SizedBox(height: 8),
+                Divider(
+                  height: 1,
+                  color: Colors.white.withValues(alpha: 0.55),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  detail,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: foreground.withValues(alpha: 0.92),
+                    fontSize: 12,
+                    height: 1.45,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// -----------------------------------------------------------------------------
+// STATUS DOT
+// -----------------------------------------------------------------------------
+// The state icon, with a halo that expands and fades while [pulse] runs.
+// Isolated behind a RepaintBoundary so the animation repaints ~20px, not the
+// whole capsule and the list behind it.
+// -----------------------------------------------------------------------------
+
+class _StatusDot extends StatelessWidget {
+  final Color tint;
+  final IconData icon;
+  final Animation<double> pulse;
+
+  const _StatusDot({
+    required this.tint,
+    required this.icon,
+    required this.pulse,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final Color foreground = Color.lerp(tint, Colors.black, 0.35)!;
+
+    return RepaintBoundary(
+      child: SizedBox(
+        width: 22,
+        height: 22,
+        child: Stack(
+          alignment: Alignment.center,
           children: [
-            // Pulsing-looking dot: a glow ring around the state icon
+            AnimatedBuilder(
+              animation: pulse,
+              builder: (context, _) {
+                final double t = pulse.value;
+                if (t == 0) return const SizedBox.shrink();
+                return Container(
+                  width: 14 + 8 * t,
+                  height: 14 + 8 * t,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: tint.withValues(alpha: 0.35 * (1 - t)),
+                  ),
+                );
+              },
+            ),
             Container(
-              padding: const EdgeInsets.all(4),
+              width: 21,
+              height: 21,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: tint.withValues(alpha: 0.18),
+                color: tint.withValues(alpha: 0.20),
               ),
-              child: Icon(barIcon, color: foreground, size: 13),
-            ),
-            const SizedBox(width: 8),
-            Flexible(
-              child: Text(
-                barText,
-                style: TextStyle(
-                  color: foreground,
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w600,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
+              child: Icon(icon, color: foreground, size: 12),
             ),
           ],
         ),

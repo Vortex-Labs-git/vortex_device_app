@@ -199,6 +199,106 @@ class GlassGhostButton extends StatelessWidget {
 }
 
 // -----------------------------------------------------------------------------
+// GLASS ICON BUTTON
+// -----------------------------------------------------------------------------
+// Small circular glass button for chrome (the profile button in the app bar).
+// A bare IconButton on a translucent bar has almost no visible affordance, so
+// this gives it a pane of its own plus a press-down scale — the touch feedback
+// a ripple alone doesn't provide on a light background.
+// -----------------------------------------------------------------------------
+
+class GlassIconButton extends StatefulWidget {
+  final IconData icon;
+  final VoidCallback onPressed;
+  final String? tooltip;
+  final double size;
+  final Color? color;
+
+  /// Small colored dot on the upper-right of the button, for unread/live hints.
+  final Color? badgeColor;
+
+  const GlassIconButton({
+    super.key,
+    required this.icon,
+    required this.onPressed,
+    this.tooltip,
+    this.size = 40,
+    this.color,
+    this.badgeColor,
+  });
+
+  @override
+  State<GlassIconButton> createState() => _GlassIconButtonState();
+}
+
+class _GlassIconButtonState extends State<GlassIconButton> {
+  bool _pressed = false;
+
+  void _setPressed(bool value) {
+    if (_pressed != value) setState(() => _pressed = value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final Color fg = widget.color ?? GlassTokens.primary;
+
+    Widget button = AnimatedScale(
+      scale: _pressed ? 0.90 : 1.0,
+      duration: const Duration(milliseconds: 120),
+      curve: Curves.easeOut,
+      child: Container(
+        width: widget.size,
+        height: widget.size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.white.withValues(alpha: _pressed ? 0.75 : 0.55),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.80)),
+        ),
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            onTap: widget.onPressed,
+            onTapDown: (_) => _setPressed(true),
+            onTapUp: (_) => _setPressed(false),
+            onTapCancel: () => _setPressed(false),
+            customBorder: const CircleBorder(),
+            splashColor: fg.withValues(alpha: 0.14),
+            child: Icon(widget.icon, size: widget.size * 0.52, color: fg),
+          ),
+        ),
+      ),
+    );
+
+    if (widget.badgeColor != null) {
+      button = Stack(
+        clipBehavior: Clip.none,
+        children: [
+          button,
+          Positioned(
+            top: 1,
+            right: 1,
+            child: Container(
+              width: 9,
+              height: 9,
+              decoration: BoxDecoration(
+                color: widget.badgeColor,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 1.5),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (widget.tooltip != null) {
+      button = Tooltip(message: widget.tooltip!, child: button);
+    }
+    return button;
+  }
+}
+
+// -----------------------------------------------------------------------------
 // GLASS FAB
 // -----------------------------------------------------------------------------
 // Circular gradient action button. Not a Material FAB — it needs the same

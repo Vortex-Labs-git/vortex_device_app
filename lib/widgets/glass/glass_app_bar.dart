@@ -27,6 +27,13 @@ class GlassAppBar extends StatelessWidget implements PreferredSizeWidget {
   /// Tints the bar (and the title) — used to mark direct-to-device mode.
   final Color? tint;
 
+  /// Small line under the title, for context that changes (a device name, a
+  /// mode). Raises the bar's height when present.
+  final String? subtitle;
+
+  /// Mark shown immediately before the title — the brand dot on the main shell.
+  final Widget? titleMark;
+
   const GlassAppBar({
     super.key,
     required this.title,
@@ -34,10 +41,13 @@ class GlassAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.leading,
     this.centerTitle = true,
     this.tint,
+    this.subtitle,
+    this.titleMark,
   });
 
   @override
-  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
+  Size get preferredSize =>
+      Size.fromHeight(subtitle == null ? kToolbarHeight : kToolbarHeight + 12);
 
   @override
   Widget build(BuildContext context) {
@@ -67,13 +77,47 @@ class GlassAppBar extends StatelessWidget implements PreferredSizeWidget {
             ),
           ),
           child: AppBar(
-            title: Text(
-              title,
-              style: TextStyle(
-                color: titleColor,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0.2,
-              ),
+            toolbarHeight: preferredSize.height,
+            title: Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (titleMark != null) ...[
+                  titleMark!,
+                  const SizedBox(width: 10),
+                ],
+                Flexible(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: centerTitle
+                        ? CrossAxisAlignment.center
+                        : CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          color: titleColor,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 19,
+                          letterSpacing: 0.2,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (subtitle != null)
+                        Text(
+                          subtitle!,
+                          style: TextStyle(
+                            color: titleColor.withValues(alpha: 0.62),
+                            fontWeight: FontWeight.w500,
+                            fontSize: 11.5,
+                            letterSpacing: 0.1,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                    ],
+                  ),
+                ),
+              ],
             ),
             centerTitle: centerTitle,
             leading: leading,

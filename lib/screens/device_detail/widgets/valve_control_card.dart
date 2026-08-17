@@ -86,7 +86,6 @@ class ValveControlCard extends StatelessWidget {
                     onChanged: waitingForConfirmation
                         ? null
                         : onValveControlEnabledChanged,
-                    activeColor: GlassTokens.primary,
                   ),
                 ),
               ],

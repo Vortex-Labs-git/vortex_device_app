@@ -268,18 +268,24 @@ class GlassTokens {
       ),
 
       switchTheme: SwitchThemeData(
-        thumbColor: WidgetStateProperty.resolveWith(
-          (states) => states.contains(WidgetState.selected)
-              ? Colors.white
-              : Colors.white.withValues(alpha: 0.92),
-        ),
-        trackColor: WidgetStateProperty.resolveWith(
-          (states) => states.contains(WidgetState.selected)
+        thumbColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.disabled)) {
+            return textMuted.withValues(alpha: 0.55);
+          }
+          return states.contains(WidgetState.selected) ? Colors.white : primary;
+        }),
+        trackColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.disabled)) {
+            return Colors.white.withValues(alpha: 0.35);
+          }
+          return states.contains(WidgetState.selected)
               ? primary
-              : Colors.white.withValues(alpha: 0.45),
-        ),
-        trackOutlineColor: WidgetStateProperty.all(
-          Colors.white.withValues(alpha: 0.70),
+              : Colors.white.withValues(alpha: 0.55);
+        }),
+        trackOutlineColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected)
+              ? Colors.transparent
+              : primary.withValues(alpha: 0.45),
         ),
       ),
 

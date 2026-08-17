@@ -74,40 +74,30 @@ class GlassButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(GlassTokens.radiusMd),
             splashColor: Colors.white.withValues(alpha: 0.18),
             highlightColor: Colors.white.withValues(alpha: 0.10),
-            child: Center(
-              child: isLoading
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor:
-                            AlwaysStoppedAnimation<Color>(Colors.white),
-                      ),
-                    )
-                  : Padding(
-                      // Keeps the label off the edges when the button is
-                      // shrink-wrapped (fullWidth: false).
-                      padding: const EdgeInsets.symmetric(horizontal: 22),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (icon != null) ...[
-                            Icon(icon, color: Colors.white, size: 20),
-                            const SizedBox(width: 10),
-                          ],
-                          Text(
-                            label,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: 0.2,
-                            ),
-                          ),
-                        ],
+            child: _ButtonContent(
+              isLoading: isLoading,
+              spinnerColor: Colors.white,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 22),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (icon != null) ...[
+                      Icon(icon, color: Colors.white, size: 20),
+                      const SizedBox(width: 10),
+                    ],
+                    Text(
+                      label,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.2,
                       ),
                     ),
+                  ],
+                ),
+              ),
             ),
           ),
         ),
@@ -115,6 +105,52 @@ class GlassButton extends StatelessWidget {
     );
 
     return fullWidth ? SizedBox(width: double.infinity, child: button) : button;
+  }
+}
+
+
+class _ButtonContent extends StatelessWidget {
+  final bool isLoading;
+  final Color spinnerColor;
+  final Widget child;
+
+  const _ButtonContent({
+    required this.isLoading,
+    required this.spinnerColor,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    const Duration fade = Duration(milliseconds: 160);
+    return Center(
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Stays in the layout while loading, so the width never changes.
+          AnimatedOpacity(
+            opacity: isLoading ? 0 : 1,
+            duration: fade,
+            curve: Curves.easeOut,
+            child: child,
+          ),
+          // Built ONLY while loading: a CircularProgressIndicator spins even at
+          // opacity 0, which would leave every button animating forever and
+          // stop the app ever idling.
+          if (isLoading)
+            IgnorePointer(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(spinnerColor),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 }
 

@@ -66,5 +66,5 @@ Future<String?> showEditDeviceNameDialog(
         ],
       ),
     ),
-  ).whenComplete(controller.dispose);
+  );
 }

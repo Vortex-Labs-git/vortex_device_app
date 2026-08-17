@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/widget_previews.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'controllers/device_repository.dart';
 import 'controllers/esp_session.dart';
@@ -14,10 +15,18 @@ void main() async {
   // 1. Required for async code in main
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 2. Check if user was logged in previously
+  // 2. System bars: draw the app behind them and force dark status/nav icons.
+  //    This app's chrome is light in every state, so leaving icon color to the
+  //    phone's theme makes the clock and battery invisible on a light-themed
+  //    phone. Set here as well as on GlassAppBar so screens without an app bar
+  //    (and the moment before the first frame) are covered too.
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  SystemChrome.setSystemUIOverlayStyle(GlassTokens.systemOverlay);
+
+  // 3. Check if user was logged in previously
   await AuthService.checkLoginStatus();
 
-  // 3. Start the app-lifetime controllers.
+  // 4. Start the app-lifetime controllers.
   //    ORDER MATTERS: EspSession and DeviceRepository must be listening
   //    before NetworkWatcher's first emission, or an app launched while
   //    already on a Vortex AP would miss its connect trigger.
@@ -28,7 +37,7 @@ void main() async {
   //                                               block the first frame
   NetworkWatcher.instance.start();
 
-  // 4. Start App
+  // 5. Start App
   runApp(const VortaxLabsApp());
 }
 

@@ -1,6 +1,7 @@
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../theme/glass_theme.dart';
 
@@ -77,6 +78,10 @@ class GlassAppBar extends StatelessWidget implements PreferredSizeWidget {
             ),
           ),
           child: AppBar(
+            // Set explicitly: AppBar otherwise infers icon brightness from its
+            // own background, and ours is transparent, so it guesses wrong and
+            // the clock/battery icons disappear into the light bar.
+            systemOverlayStyle: GlassTokens.systemOverlay,
             toolbarHeight: preferredSize.height,
             title: Row(
               mainAxisSize: MainAxisSize.min,

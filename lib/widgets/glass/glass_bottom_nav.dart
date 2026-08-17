@@ -55,13 +55,15 @@ class GlassBottomNav extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final BorderRadius radius = BorderRadius.circular(barHeight / 2);
-    // Sit above the gesture bar / home indicator rather than under it. Only
-    // half the inset is added: the full value leaves the island stranded high
-    // above a tall 3-button navigation bar.
+    // Clear the system navigation area completely. The app runs edge-to-edge,
+    // so that area is ours to draw into — which means nothing stops this island
+    // from landing on top of Android's 3-button bar unless the FULL inset is
+    // reserved. A slightly airy gap under gesture navigation is the acceptable
+    // side of that trade; overlapping the Back button is not.
     final double bottomInset = MediaQuery.paddingOf(context).bottom;
 
     return Padding(
-      padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + bottomInset * 0.5),
+      padding: EdgeInsets.fromLTRB(16, 0, 16, 10 + bottomInset),
       child: Container(
         height: barHeight,
         decoration: BoxDecoration(

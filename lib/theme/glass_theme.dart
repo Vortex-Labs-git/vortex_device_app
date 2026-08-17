@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 // =============================================================================
 // GLASS THEME
@@ -149,6 +150,28 @@ class GlassTokens {
       ),
     ];
   }
+
+  // ---------------------------------------------------------------------------
+  // SYSTEM BARS
+  // ---------------------------------------------------------------------------
+  // The clock, battery and signal icons are drawn by the OS, not by us, and by
+  // default their color follows the PHONE's theme — so on a light-themed phone
+  // they come out white and vanish against this app's light glass bar.
+  //
+  // This app's chrome is light in every state, so the fix is to stop leaving it
+  // to the OS and always ask for dark icons. Both platforms are covered:
+  // statusBarIconBrightness is the Android knob, statusBarBrightness is the iOS
+  // one (and iOS reads it as the brightness of the BACKGROUND, hence .light).
+  //
+  // The bars themselves are transparent so the gradient runs behind them.
+  static const SystemUiOverlayStyle systemOverlay = SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: Brightness.dark, // Android
+    statusBarBrightness: Brightness.light, // iOS
+    systemNavigationBarColor: Colors.transparent,
+    systemNavigationBarIconBrightness: Brightness.dark,
+    systemNavigationBarDividerColor: Colors.transparent,
+  );
 
   /// Gradient used for solid accents (primary buttons, the FAB, avatars).
   /// Fill for solid accents (primary buttons, the FAB, avatars). Both stops are

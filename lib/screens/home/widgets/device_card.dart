@@ -10,8 +10,9 @@ import '../../../widgets/glass/glass.dart';
 // status dot + label, and a colored side bar. The whole card is tappable —
 // the parent decides what to do based on device status.
 //
-// The pane is tinted by status, so online / offline reads at a glance from
-// the glass itself rather than only from the label.
+// The pane is tinted by status, and so is the ring around the device image, so
+// online / offline reads at a glance from the card itself rather than only
+// from the label.
 //
 // Avatar logic (driven by the device ID prefix):
 //   - VA*  → valve product image (assets/images/valve_v2.jpeg)
@@ -20,14 +21,14 @@ import '../../../widgets/glass/glass.dart';
 //
 // All status logic (online / offline / esp_connected) lives in the parent;
 // this widget just receives the resolved [statusText] / [statusColor] values
-// and the icon color override for the avatar.
+// and the direct-connection flag that distinguishes a local AP link.
 // =============================================================================
 
 class DeviceCard extends StatelessWidget {
   final Map<String, dynamic> device;
   final String statusText; // "Online" | "Offline" | "Direct Connected"
   final Color statusColor; // Green or red
-  final bool isEspConnected; // Drives the avatar icon color
+  final bool isEspConnected; // Direct AP link — rings the avatar in brand teal
   final VoidCallback onTap;
 
   const DeviceCard({
@@ -51,9 +52,13 @@ class DeviceCard extends StatelessWidget {
     final bool isValve = idPrefix.startsWith('VA'); // valve image
     final bool isSensor = idPrefix.startsWith('SU'); // sensor icon
 
-    final Color accent = isEspConnected
-        ? GlassTokens.success
-        : GlassTokens.primary;
+    // The ring around the device image tells the same story as the pill and the
+    // status edge, so it must not stay a friendly teal on an offline device:
+    //   offline          → red, matching the rest of the card
+    //   direct connected → brand teal, because a local AP link is a different
+    //                      kind of "connected" (no cloud, manual control only)
+    //   online           → green
+    final Color accent = isEspConnected ? GlassTokens.primary : statusColor;
 
     return GlassSurface(
       margin: const EdgeInsets.only(bottom: 14),

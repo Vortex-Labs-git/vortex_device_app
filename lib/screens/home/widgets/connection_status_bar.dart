@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../theme/glass_theme.dart';
@@ -12,9 +14,15 @@ import '../../../widgets/glass/glass.dart';
 //   - ORANGE "Offline — showing cached..."    (no server, no AP)
 //
 // The one-line summary rarely tells the user what a state actually means for
-// them, so tapping expands an explanation of what works in that mode. When
-// updates are live the dot pulses, which distinguishes "connected right now"
-// from a label that might be stale at a glance.
+// them, so tapping expands an explanation of what works in that mode.
+//
+// The dot pulses for a few seconds when the connection comes up, then settles.
+// It deliberately does NOT pulse forever: an animation that never ends keeps
+// the whole app producing frames, and because BackdropFilter cannot be cached,
+// the app bar and nav blurs are then recomputed on every one of those frames.
+// Measured, that cost a full CPU core continuously while the screen just sat
+// there. A pulse on the transition says "this just went live" — which is the
+// moment the information is worth anything — and then the screen goes quiet.
 //
 // This widget is display-only: it takes the same three values from the parent
 // as before and never talks to the services itself. Expansion is local state.
@@ -40,6 +48,10 @@ class _ConnectionStatusBarState extends State<ConnectionStatusBar>
     with SingleTickerProviderStateMixin {
   bool _expanded = false;
   late final AnimationController _pulse;
+  Timer? _pulseStop;
+
+  /// How long the "just went live" pulse runs before the screen goes idle.
+  static const Duration _pulseWindow = Duration(seconds: 5);
 
   @override
   void initState() {
@@ -57,20 +69,32 @@ class _ConnectionStatusBarState extends State<ConnectionStatusBar>
     if (widget.wsConnected != oldWidget.wsConnected) _syncPulse();
   }
 
-  /// The halo only runs while updates are actually live — a pulsing dot on a
-  /// stale or offline state would be a lie, and an always-on animation is not
-  /// worth the battery.
+  /// The halo runs only while updates are actually live — a pulsing dot on a
+  /// stale or offline state would be a lie — and only for [_pulseWindow], so
+  /// the app can go idle afterwards. See the note at the top of this file for
+  /// why a permanent animation is expensive here specifically.
   void _syncPulse() {
-    if (widget.wsConnected) {
-      _pulse.repeat();
-    } else {
+    _pulseStop?.cancel();
+
+    if (!widget.wsConnected) {
       _pulse.stop();
       _pulse.value = 0;
+      return;
     }
+
+    _pulse.repeat();
+    _pulseStop = Timer(_pulseWindow, () {
+      if (!mounted) return;
+      _pulse.stop();
+      // Rewinding notifies the listeners, so the halo clears without a
+      // setState of its own.
+      _pulse.value = 0;
+    });
   }
 
   @override
   void dispose() {
+    _pulseStop?.cancel();
     _pulse.dispose();
     super.dispose();
   }

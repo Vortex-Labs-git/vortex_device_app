@@ -21,10 +21,12 @@ import '../../theme/glass_theme.dart';
 // layer, so scrolling content on top of it never forces it to repaint.
 //
 // [animated] drifts the orbs on a slow 24s loop. It is off everywhere by
-// default: this app spends long stretches open on a bench next to hardware,
-// and a continuously repainting background is not worth the battery there.
-// Turn it on for a screen that is only briefly on display if you want the
-// backdrop to feel alive.
+// default, and turning it on is more expensive than it looks: any animation
+// that never ends keeps the app producing frames forever, and BackdropFilter
+// cannot be cached, so the app bar and nav blurs get recomputed on every one
+// of those frames. Measured on this app, an endless animation cost a full CPU
+// core while the screen sat idle. Only enable this on a screen that is briefly
+// on display, and never on one the user leaves open.
 // =============================================================================
 
 class GlassBackground extends StatefulWidget {

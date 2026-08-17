@@ -113,8 +113,7 @@ class _ConnectionStatusBarState extends State<ConnectionStatusBar>
       tint = GlassTokens.success;
       label = 'Live updates active';
       icon = Icons.wifi;
-      detail = 'Connected to the Vortex cloud. Valve changes show up here as '
-          'they happen, and you can control devices from anywhere.';
+      detail = 'Connected to the Vortex cloud.';
     } else if (widget.isEspApMode) {
       tint = GlassTokens.primary;
       label = 'Direct mode — ${widget.connectedSsid ?? 'Valve WiFi'}';

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../controllers/device_repository.dart';
 import '../services/auth_service.dart';
 import '../theme/glass_theme.dart';
 import '../widgets/glass/glass.dart';
@@ -19,6 +20,7 @@ class _UserScreenState extends State<UserScreen> {
     if (!AuthService.isLoggedIn) {
       return LoginScreen(
         onLoginSuccess: () {
+          DeviceRepository.instance.reloadForLogin();
           // Replace entire navigation stack with fresh MainScreen
           // This ensures HomeScreen re-initializes with WebSocket connected
           Navigator.of(context).pushAndRemoveUntil(
@@ -368,6 +370,12 @@ class _UserScreenState extends State<UserScreen> {
             onPressed: () async {
               Navigator.pop(dialogContext); // Close dialog
               await AuthService.logout(); // Wait for logout to complete
+
+              // Drop the old account's devices from memory too. logout()
+              // only clears the disk cache; the repository singleton keeps
+              // its in-memory list, which is what HomeScreen renders.
+              DeviceRepository.instance.clearForLogout();
+
               if (mounted) {
                 // Replace entire navigation stack with fresh MainScreen
                 // This ensures all pages (Home, User, etc.) rebuild with logged-out state

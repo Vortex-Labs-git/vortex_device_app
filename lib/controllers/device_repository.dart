@@ -278,6 +278,63 @@ class DeviceRepository {
     }
   }
 
+
+  // -- Account switching (logout / login) --
+
+  /// Wipe the previous account's devices from memory.
+  ///
+  /// Call this right after AuthService.logout(). Logout clears the token,
+  /// the WebSocket and the disk cache, but this repository is an
+  /// app-lifetime singleton: `_baseDevices` survives, and HomeScreen reads
+  /// `current` on every rebuild — so the freshly-rebuilt MainScreen kept
+  /// rendering the logged-out account's device list until a *new* server
+  /// push happened to replace it.
+  void clearForLogout() {
+    _baseDevices = [];
+    _espDeviceId = null;
+    _espIsUserDevice = false;
+    _isLoading = false;
+    _wsConnected = WebSocketService.isConnected;
+    _isOffline = false;
+    _errorMessage = null;
+    _log('Logout: cleared in-memory device list');
+    _emit();
+  }
+
+  /// Re-arm the list for the account that just logged in.
+  ///
+  /// AuthService.login() has already connected the WebSocket, so normally
+  /// this just re-subscribes and shows the spinner until 'devices_data'
+  /// arrives. Anything still in `_baseDevices` (e.g. logging in without a
+  /// prior logout) is dropped first so the previous account's devices can
+  /// never survive into the new session.
+  Future<void> reloadForLogin() async {
+    _baseDevices = [];
+    _isLoading = true;
+    _isOffline = false;
+    _errorMessage = null;
+    _applySession(EspSession.instance.current);
+    _emit();
+
+    // Not started yet (e.g. first login on a cold start) — the normal
+    // bring-up in start() covers everything below.
+    if (!_started) {
+      await start();
+      return;
+    }
+
+    if (WebSocketService.isConnected) {
+      _wsConnected = true;
+      WebSocketService.subscribeTo('device_list');
+      _log('Login: subscribed to device_list for the new account');
+      _emit();
+    } else {
+      unawaited(_waitForConnection());
+    }
+  }
+
+
+
   // -- Server bring-up fallback (legacy _waitForConnection, verbatim) --
 
   Future<void> _waitForConnection() async {

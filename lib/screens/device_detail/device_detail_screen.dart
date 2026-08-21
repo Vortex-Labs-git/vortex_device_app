@@ -752,7 +752,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
 
             // 9.4  Schedule card — either from the mode toggle or the
             //      control-mode buttons
-            if (_isScheduleMode || _controlMode == 'schedule' || !isOnline)
+            if (_isScheduleMode || _controlMode == 'schedule')
               ScheduleCard(
                 schedules: _schedules,
                 isSavingSchedule: _isSavingSchedule,
@@ -760,10 +760,9 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
                 onRowTapped: (i) => _showScheduleDialog(editIndex: i),
                 onRowDeleted: _deleteSchedule,
                 onSavePressed: _saveSchedule,
-              ),
-
+              )
             // 9.5  Manual mode → Valve control card
-            if (!_isScheduleMode && _controlMode == 'manual')
+            else if (_controlMode == 'manual')
               ValveControlCard(
                 valveControlEnabled: _valveControlEnabled,
                 onValveControlEnabledChanged: (v) =>
@@ -802,9 +801,9 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
                 waitingForConfirmation: _confirmation.isWaiting,
                 pendingTargetAngle: _confirmation.targetAngle,
                 confirmationCountdown: _confirmation.countdown,
-              ),
-
-            if (_controlMode == 'sensor')
+              )
+            // 9.6  Sensor mode → sensor settings card
+            else if (_controlMode == 'sensor')
               SensorCard(
                 reading: _sensorReading,
                 isUnitOnline: isDeviceOnline(_sensorReading?.lastSeen),

@@ -30,6 +30,8 @@ dev_dependencies:
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices.
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
+  flutter_native_splash: ^2.4.6
 
 # The following section is specific to Flutter packages.
 flutter:
@@ -40,3 +42,19 @@ flutter:
   # App image assets live here.
   assets:
     - assets/images/
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/images/applogo.png"
+
+flutter_native_splash:
+  color: "#070032"
+  image: assets/images/splashlogo.png
+
+  android_12:
+    color: "#070032"
+    image: assets/images/splashlogo.png
+    
+  android: true
+  ios: true

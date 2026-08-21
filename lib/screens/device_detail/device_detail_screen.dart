@@ -7,6 +7,7 @@ import '../motor_calibration_screen.dart';
 import '../../models/valve_device.dart';
 import '../../theme/glass_theme.dart';
 import '../../widgets/glass/glass.dart';
+import '../../controllers/device_repository.dart';
 
 // Controllers (live data + confirmation wait)
 import 'controllers/device_feeds.dart';
@@ -15,10 +16,12 @@ import 'controllers/valve_confirmation_controller.dart';
 // Dialogs
 import 'dialogs/edit_device_name_dialog.dart';
 import 'dialogs/schedule_dialogs.dart';
+import 'dialogs/sensor_dialogs.dart';
 import 'dialogs/wifi_credentials_dialog.dart';
 
 // Pure helpers
 import 'utils/schedule_utils.dart';
+import 'utils/sensor_utils.dart';
 import 'utils/valve_utils.dart';
 
 // Card widgets
@@ -96,9 +99,15 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
   Timer? _angleEditDebounce;
 
   // -- Schedule data --
- List<ScheduleEntry> _schedules = []; 
+  List<ScheduleEntry> _schedules = []; 
   bool _isSavingSchedule = false;
   bool _schedulesLocallyEdited = false;
+
+    // -- Sensor data (Control by → sensor) --
+  SensorReading? _sensorReading;
+  List<SensorRule> _sensorRules = [];
+  bool _isSavingSensorRules = false;
+  bool _sensorRulesLocallyEdited = false;
 
   // -- Controllers --
   late final ValveConfirmationController _confirmation;
@@ -270,14 +279,29 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
   }
 
   void _onServerScheduleUpdate(Map<String, dynamic> data) {
-    // Never overwrite edits the user hasn't saved yet.
-    if (!mounted || _schedulesLocallyEdited) return;
+    if (!mounted) return;
 
-    final parsed = parseSchedulePayload(data);
-    if (parsed == null) return;
+    // -- Schedule half (unchanged) --
+    if (!_schedulesLocallyEdited) {
+      final parsed = parseSchedulePayload(data);
+      if (parsed != null) {
+        setState(() => _schedules = parsed);
+        print("📅 Loaded ${_schedules.length} schedule entries from server");
+      }
+    }
 
-    setState(() => _schedules = parsed);
-    print("📅 Loaded ${_schedules.length} schedule entries from server");
+    // -- Sensor half: same push, "Sensor" block. Guarded by its OWN edit flag
+    //    so saving one table never discards unsaved edits in the other. --
+    final sensor = parseSensorPayload(data);
+    if (sensor != null) {
+      setState(() {
+        _sensorReading = sensor.reading;   // live value: always follows server
+        if (!_sensorRulesLocallyEdited) {
+          _sensorRules = sensor.rules;
+        }
+      });
+      print("🌡️ Loaded ${sensor.rules.length} sensor rules from server");
+    }
   }
 
   /// Maps the ESP32's `get_valvedata` fields onto the server DB-equivalent
@@ -473,7 +497,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
   }
 
   // ===========================================================================
-  // SECTION 6: SCHEDULE (add / edit / delete / save)
+  // SECTION 6a: SCHEDULE (add / edit / delete / save)
   // ===========================================================================
 
   Future<void> _showScheduleDialog({int? editIndex}) async {
@@ -523,6 +547,78 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
 
     setState(() => _isSavingSchedule = false);
   }
+
+  // ===========================================================================
+  // SECTION 6b: SENSOR RULE (add / edit / delete / save)
+  // ===========================================================================
+
+  Future<void> _showSensorRuleDialog({int? editIndex}) async {
+    final rule = await showSensorRuleDialog(
+      context,
+      initial: editIndex != null ? _sensorRules[editIndex] : null,
+      existingRules: _sensorRules,
+    );
+    if (rule == null || !mounted) return;
+
+    setState(() {
+      if (editIndex != null) {
+        _sensorRules[editIndex] = rule;
+      } else {
+        _sensorRules.add(rule);
+      }
+      _sensorRules.sort((a, b) => a.from.compareTo(b.from));
+      _sensorRulesLocallyEdited = true;
+    });
+  }
+
+  void _deleteSensorRule(int index) {
+    setState(() {
+      _sensorRules.removeAt(index);
+      _sensorRulesLocallyEdited = true;
+    });
+  }
+
+    /// The push carries unit_id but no unit_name, and set_valve_sensor wants
+  /// both. The home list already knows the name, so fill it from there — this
+  /// screen is subscribed to device_detail, but the repository still holds the
+  /// last device_list snapshot, which is exactly what we need.
+  SensorReading _sensorForSave(SensorReading sensor) {
+    if (sensor.unitName.isNotEmpty) return sensor;
+    final String name =
+        DeviceRepository.instance.deviceById(sensor.unitId)?.name ?? '';
+    return sensor.copyWith(unitName: name);
+  }
+
+  Future<void> _saveSensorRules() async {
+    final SensorReading? sensor = _sensorReading;
+    if (sensor == null) {
+      _showMessage('No sensor is assigned to this valve',
+          color: GlassTokens.danger);
+      return;
+    }
+
+    setState(() => _isSavingSensorRules = true);
+
+    final result = await DeviceControlApi.saveSensorRules(
+      deviceId: _device['id'],
+      sensor: _sensorForSave(sensor),
+      rules: _sensorRules,
+    );
+
+    if (!mounted) return;
+
+    if (result.success) {
+      // Saved — let the server's pushes drive the table again.
+      setState(() => _sensorRulesLocallyEdited = false);
+      _showMessage('Sensor rules saved successfully!',
+          color: GlassTokens.success);
+    } else {
+      _showMessage(result.displayMessage, color: GlassTokens.danger);
+    }
+
+    setState(() => _isSavingSensorRules = false);
+  }
+
 
   // ===========================================================================
   // SECTION 7: DEVICE NAME
@@ -708,9 +804,17 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
                 confirmationCountdown: _confirmation.countdown,
               ),
 
-            // 9.6  Sensor card (placeholder)
-            if (!_isScheduleMode && _controlMode == 'sensor')
-              const SensorCard(),
+            if (_controlMode == 'sensor')
+              SensorCard(
+                reading: _sensorReading,
+                isUnitOnline: isDeviceOnline(_sensorReading?.lastSeen),
+                rules: _sensorRules,
+                isSavingRules: _isSavingSensorRules,
+                onAddPressed: _showSensorRuleDialog,
+                onRowTapped: (i) => _showSensorRuleDialog(editIndex: i),
+                onRowDeleted: _deleteSensorRule,
+                onSavePressed: _saveSensorRules,
+              ),
 
             const SizedBox(height: 16),
 

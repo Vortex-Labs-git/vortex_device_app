@@ -155,6 +155,31 @@ class DeviceControlApi {
     );
   }
 
+  /// Replaces the valve's sensor rules. An empty [rules] list sends an empty
+  /// sensor_rule object, which is how the table is cleared.
+  ///
+  /// [sensor] is the bound sensor's identity; the valve needs to know which
+  /// sensor the ranges refer to, so it goes out with every save even when
+  /// only the rules changed.
+  static Future<DeviceApiResult> saveSensorRules({
+    required Object? deviceId,
+    required SensorReading sensor,
+    required List<SensorRule> rules,
+  }) {
+    return _post(
+      logTag: 'Sensor Rules',
+      body: {
+        'event': 'set_valve_sensor',
+        'timestamp': DateTime.now().toUtc().toIso8601String(),
+        'device_id': deviceId,
+        'set_sensordata': {
+          'sensor_rule': SensorRule.mapFromList(rules),
+          'sensor_data': sensor.toJson(),
+        },
+      },
+    );
+  }
+
   // ---------------------------------------------------------------------------
   // Internals
   // ---------------------------------------------------------------------------

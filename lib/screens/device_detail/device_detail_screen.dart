@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../services/device_control_api.dart';
+import '../../services/auth_service.dart';
 import '../motor_calibration_screen.dart';
 import '../../models/valve_device.dart';
 import '../../theme/glass_theme.dart';
@@ -108,6 +109,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
   List<SensorRule> _sensorRules = [];
   bool _isSavingSensorRules = false;
   bool _sensorRulesLocallyEdited = false;
+  bool _isLoadingSensorUnits = false;
 
   // -- Controllers --
   late final ValveConfirmationController _confirmation;
@@ -578,7 +580,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
     });
   }
 
-    /// The push carries unit_id but no unit_name, and set_valve_sensor wants
+  /// The push carries unit_id but no unit_name, and set_valve_sensor wants
   /// both. The home list already knows the name, so fill it from there — this
   /// screen is subscribed to device_detail, but the repository still holds the
   /// last device_list snapshot, which is exactly what we need.
@@ -619,6 +621,90 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
     setState(() => _isSavingSensorRules = false);
   }
 
+  /// "+ Add sensor" — fetch the account's units, run the two-step picker, then
+  /// bind the chosen sensor.
+  ///
+  /// Binding sends an EMPTY sensor_rule: the ranges that were there belonged
+  /// to the previous sensor, and a moisture range means nothing to a
+  /// temperature probe.
+  Future<void> _addSensor() async {
+    setState(() => _isLoadingSensorUnits = true);
+
+    final result = await DeviceControlApi.getUserSensors(
+      userId: AuthService.currentUser?['id'],
+      deviceId: _device['id'],
+    );
+
+    if (!mounted) return;
+    setState(() => _isLoadingSensorUnits = false);
+
+    if (!result.success) {
+      _showMessage(result.displayMessage, color: GlassTokens.danger);
+      return;
+    }
+    if (result.units.isEmpty) {
+      _showMessage('No sensor units found on this account',
+          color: GlassTokens.warning);
+      return;
+    }
+
+    final SensorReading? picked =
+        await showAddSensorFlow(context, units: result.units);
+    if (picked == null || !mounted) return;
+
+    setState(() => _isSavingSensorRules = true);
+
+    final saved = await DeviceControlApi.saveSensorRules(
+      deviceId: _device['id'],
+      sensor: picked,
+      rules: const [],   // new sensor → the table starts empty
+    );
+
+    if (!mounted) return;
+    setState(() => _isSavingSensorRules = false);
+
+    if (saved.success) {
+      setState(() {
+        _sensorReading = picked;
+        _sensorRules = [];
+        _sensorRulesLocallyEdited = false; // let the server drive again
+      });
+      _showMessage('Sensor assigned to this valve',
+          color: GlassTokens.success);
+    } else {
+      _showMessage(saved.displayMessage, color: GlassTokens.danger);
+    }
+  }
+
+
+  /// "Remove" on the sensor panel. Unbinds the sensor and drops the rules with
+  /// it — the ranges only mean something for the sensor they were written for.
+  Future<void> _removeSensor() async {
+    final bool? confirmed = await showRemoveSensorDialog(
+      context,
+      ruleCount: _sensorRules.length,
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _isSavingSensorRules = true);
+
+    final result =
+        await DeviceControlApi.clearValveSensor(deviceId: _device['id']);
+
+    if (!mounted) return;
+    setState(() => _isSavingSensorRules = false);
+
+    if (result.success) {
+      setState(() {
+        _sensorReading = null;
+        _sensorRules = [];
+        _sensorRulesLocallyEdited = false; // server drives again
+      });
+      _showMessage('Sensor removed', color: GlassTokens.success);
+    } else {
+      _showMessage(result.displayMessage, color: GlassTokens.danger);
+    }
+  }
 
   // ===========================================================================
   // SECTION 7: DEVICE NAME
@@ -805,6 +891,9 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
             // 9.6  Sensor mode → sensor settings card
             else if (_controlMode == 'sensor')
               SensorCard(
+                onAddSensorPressed: _addSensor,
+                onRemoveSensor: _removeSensor,
+                isLoadingUnits: _isLoadingSensorUnits,
                 reading: _sensorReading,
                 isUnitOnline: isDeviceOnline(_sensorReading?.lastSeen),
                 rules: _sensorRules,

@@ -241,6 +241,27 @@ class SensorReading {
         'sensor_name': sensorName,
         'sensor_type': sensorType,
       };
+  
+  /// The reading trimmed for display. The wire sends 33.45692475692 and the
+  /// card has about 78px to draw it in, so anything numeric is cut to one
+  /// decimal — and a whole number keeps no decimal at all, so 8 stays "8"
+  /// rather than becoming "8.0".
+  ///
+  /// Non-numeric values pass through untouched: if a sensor ever reports a
+  /// word or a value with a unit suffix, mangling it would be worse than
+  /// letting it through.
+  ///
+  /// [value] itself stays raw — this is presentation only.
+  String get displayValue {
+    if (value.isEmpty) return '—';
+
+    final double? number = double.tryParse(value);
+    if (number == null) return value;
+
+    return number == number.roundToDouble()
+        ? number.toStringAsFixed(0)
+        : number.toStringAsFixed(1);
+  }
 
   /// Only unit_name ever needs filling in — see the field's note above.
   SensorReading copyWith({String? unitName}) => SensorReading(
@@ -318,4 +339,123 @@ class SensorRule {
   static Map<String, dynamic> mapFromList(List<SensorRule> rules) => {
         for (final rule in rules) rule.range: rule.angle.toString(),
       };
+}
+
+// =============================================================================
+// SENSOR PICKER OPTIONS
+// =============================================================================
+// The `user_sensor_units` reply to get_user_sensors — what the "+ Add sensor"
+// popup chooses from:
+//
+//   {"event":"user_sensor_units", "No_sensor_units":"2",
+//    "sensor_units":[
+//      {"unit_id":"SU200001001", "unit_name":"garden sensor",
+//       "unit_last_seen":"2026-08-01 17:02:32", "no_sensors":"3",
+//       "sensor_data":[{"sensor_id":"S00", "sensor_type":"Temperature",
+//                       "sensor_name":"Inbuild Temp", "sensor_value":31.21}]}]}
+//
+// These are deliberately their OWN classes, not the SensorUnit / Sensor pair in
+// models/sensor_unit.dart. Those two model a unit's own detail screen, keyed
+// `id` / `unit_version` with sensor_data as an escaped JSON string. This is a
+// picker payload: different keys, sensor_data is a real list, and the only
+// thing it ever produces is a SensorReading for the valve. Keeping them apart
+// means a change to the sensor-unit screen can't quietly break this popup —
+// and it keeps everything the valve detail screen needs in this one file.
+//
+// The count fields (No_sensor_units, no_sensors) are ignored on purpose: the
+// list length is the honest count, and trusting a separate counter is how you
+// end up rendering blank rows.
+// =============================================================================
+
+/// One sensor inside a pickable unit.
+class SensorOption {
+  final String id;     // "S02"
+  final String type;   // "Moisture"
+  final String name;   // "moisture 1"
+
+  /// Kept as a String — the wire sends 31.21185302734375 for one sensor and
+  /// 8 for the next, and nothing here does arithmetic on it.
+  final String value;
+
+  const SensorOption({
+    required this.id,
+    required this.type,
+    required this.name,
+    required this.value,
+  });
+
+  factory SensorOption.fromJson(Map<String, dynamic> json) => SensorOption(
+        id: json['sensor_id']?.toString().trim() ?? '',
+        type: json['sensor_type']?.toString().trim() ?? '',
+        name: json['sensor_name']?.toString().trim() ?? '',
+        value: json['sensor_value']?.toString().trim() ?? '',
+      );
+
+  /// The picked sensor as the card's model. [unit] supplies unit_id/unit_name
+  /// (both needed by set_valve_sensor) and last_seen, so the card's online dot
+  /// is right immediately instead of waiting for the next push.
+  SensorReading toReading(SensorUnitOption unit) => SensorReading(
+        unitId: unit.id,
+        unitName: unit.name,
+        sensorId: id,
+        sensorName: name,
+        sensorType: type,
+        value: value,
+        lastSeen: unit.lastSeen,
+        status: '',
+      );
+}
+
+/// One unit in the "Available Sensor Units" list.
+class SensorUnitOption {
+  final String id;        // "SU200001001"
+  final String name;      // "garden sensor"
+
+  /// Raw server timestamp. Feed it to isDeviceOnline() for the state dot —
+  /// DateTime.parse takes the space separator fine.
+  final String? lastSeen;
+
+  final List<SensorOption> sensors;
+
+  const SensorUnitOption({
+    required this.id,
+    required this.name,
+    required this.lastSeen,
+    required this.sensors,
+  });
+
+  factory SensorUnitOption.fromJson(Map<String, dynamic> json) {
+    final String seen = json['unit_last_seen']?.toString().trim() ?? '';
+
+    return SensorUnitOption(
+      id: json['unit_id']?.toString().trim() ?? '',
+      name: json['unit_name']?.toString().trim() ?? '',
+      // '' / 'NULL' both mean "never reported" — same PHP gotcha as
+      // vwv_last_seen. isDeviceOnline() treats null as offline.
+      lastSeen: (seen.isEmpty || seen.toUpperCase() == 'NULL') ? null : seen,
+      sensors: _parseSensors(json['sensor_data']),
+    );
+  }
+
+  /// Whole reply → the units to list. Defensive throughout: a missing or
+  /// malformed `sensor_units` yields an empty list rather than throwing, and
+  /// non-map entries are skipped.
+  static List<SensorUnitOption> listFromResponse(Map<String, dynamic> json) {
+    final raw = json['sensor_units'];
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((m) => SensorUnitOption.fromJson(Map<String, dynamic>.from(m)))
+        .toList();
+  }
+
+  /// `sensor_data` is a real JSON array in this payload — unlike the pushes,
+  /// where it arrives as an escaped string.
+  static List<SensorOption> _parseSensors(dynamic raw) {
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((m) => SensorOption.fromJson(Map<String, dynamic>.from(m)))
+        .toList();
+  }
 }

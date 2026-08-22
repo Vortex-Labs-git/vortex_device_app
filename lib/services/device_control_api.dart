@@ -180,6 +180,98 @@ class DeviceControlApi {
     );
   }
 
+
+  /// Unbinds the valve's sensor: no sensor, no rules.
+  ///
+  /// Mirrors saveSensorRules with both halves emptied. `sensor_rule: {}` is
+  /// already how the table is cleared, so `sensor_data: {}` is the consistent
+  /// way to say "no sensor".
+  ///
+  /// Confirm with the backend that an empty sensor_data object is how it
+  /// expects an unbind — null, or omitting the key entirely, are the other
+  /// plausible spellings and only the server knows which one it stores.
+  static Future<DeviceApiResult> clearValveSensor({
+    required Object? deviceId,
+  }) {
+    return _post(
+      logTag: 'Sensor Clear',
+      body: {
+        'event': 'set_valve_sensor',
+        'timestamp': DateTime.now().toUtc().toIso8601String(),
+        'device_id': deviceId,
+        'set_sensordata': {
+          'sensor_rule': <String, dynamic>{},
+          'sensor_data': <String, dynamic>{},
+        },
+      },
+    );
+  }
+
+
+  /// Every sensor unit on this account, for the "+ Add sensor" picker.
+  ///
+  /// This one cannot go through _post(): it returns DATA, and the reply has no
+  /// `success` field — it identifies itself with `event: user_sensor_units`.
+  /// So success is "we got a parseable object back that isn't an error".
+  static Future<SensorUnitsResult> getUserSensors({
+    required Object? userId,
+    required Object? deviceId,
+  }) async {
+    const String logTag = 'User Sensors';
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      final body = {
+        'event': 'get_user_sensors',
+        'user_id': userId,
+        'device_id': deviceId,
+      };
+
+      print("📤 $logTag Request: ${jsonEncode(body)}");
+
+      final response = await http.post(
+        Uri.parse(controlEndpoint),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(body),
+      );
+
+      print("$logTag Response: ${response.body}");
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map) {
+        return const SensorUnitsResult._(
+          success: false,
+          message: 'Unexpected reply from server',
+        );
+      }
+
+      final data = Map<String, dynamic>.from(decoded);
+
+      // A rejected user_id / device_id pair comes back as an error rather
+      // than as an empty list, so don't render "no units" for it.
+      if (data['success'] == false ||
+          data['event'] == 'error' ||
+          data.containsKey('error')) {
+        return SensorUnitsResult._(
+          success: false,
+          message: (data['message'] ?? data['error'])?.toString(),
+        );
+      }
+
+      return SensorUnitsResult._(
+        success: true,
+        units: SensorUnitOption.listFromResponse(data),
+      );
+    } catch (e) {
+      print("$logTag Error: $e");
+      return SensorUnitsResult._(success: false, error: e);
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Internals
   // ---------------------------------------------------------------------------
@@ -215,4 +307,26 @@ class DeviceControlApi {
       return DeviceApiResult.connectionFailed(e);
     }
   }
+}
+
+
+/// Outcome of get_user_sensors. Unlike DeviceApiResult this carries data.
+class SensorUnitsResult {
+  final bool success;
+  final List<SensorUnitOption> units;
+  final String? message;
+  final Object? error;
+
+  const SensorUnitsResult._({
+    required this.success,
+    this.units = const [],
+    this.message,
+    this.error,
+  });
+
+  bool get failedToConnect => error != null;
+
+  String get displayMessage => failedToConnect
+      ? 'Connection failed: $error'
+      : 'Error: ${message ?? 'could not load sensor units'}';
 }

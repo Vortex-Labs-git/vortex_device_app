@@ -35,6 +35,16 @@ class SensorCard extends StatelessWidget {
   final bool isSavingRules;
 
   final VoidCallback onAddPressed;
+  /// "+ Add sensor" / the swap button — picks WHICH sensor drives this valve.
+  /// A different operation from adding a rule, hence its own callback.
+  final VoidCallback onAddSensorPressed;
+
+  /// Unbind the sensor entirely. Destructive — the screen confirms first.
+  final VoidCallback onRemoveSensor;
+
+  /// True while get_user_sensors is in flight.
+  final bool isLoadingUnits;
+
   final ValueChanged<int> onRowTapped;   // tap a row to edit it
   final ValueChanged<int> onRowDeleted;
   final VoidCallback onSavePressed;
@@ -46,6 +56,9 @@ class SensorCard extends StatelessWidget {
     required this.rules,
     required this.isSavingRules,
     required this.onAddPressed,
+    required this.onAddSensorPressed,
+    required this.onRemoveSensor,
+    this.isLoadingUnits = false,
     required this.onRowTapped,
     required this.onRowDeleted,
     required this.onSavePressed,
@@ -200,7 +213,7 @@ class SensorCard extends StatelessWidget {
   // ───────────────────────────────────────────────────────────────────────
   Widget _buildAddSensorBox() {
     return InkWell(
-      onTap: onAddPressed,
+      onTap: isLoadingUnits ? null : onAddSensorPressed,
       borderRadius: BorderRadius.circular(8),
       child: Container(
         width: double.infinity,
@@ -210,20 +223,36 @@ class SensorCard extends StatelessWidget {
           border: Border.all(color: Colors.white.withValues(alpha: 0.65)),
           borderRadius: BorderRadius.circular(8),
         ),
-        child: const Row(
+        child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.add_circle_outline,
-                color: GlassTokens.primary, size: 20),
-            SizedBox(width: 8),
-            Text(
-              'Add sensor',
-              style: TextStyle(
-                color: GlassTokens.primary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
+          children: isLoadingUnits
+              ? [
+                  const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: GlassTokens.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Loading sensor units...',
+                    style: TextStyle(color: GlassTokens.textMuted),
+                  ),
+                ]
+              : const [
+                  Icon(Icons.add_circle_outline,
+                      color: GlassTokens.primary, size: 20),
+                  SizedBox(width: 8),
+                  Text(
+                    'Add sensor',
+                    style: TextStyle(
+                      color: GlassTokens.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
         ),
       ),
     );
@@ -244,7 +273,10 @@ class SensorCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // -- Unit id + online pill --
+          // -- Unit id + name + online pill --
+          //    Actions deliberately NOT in this row: badge + id + pill + an
+          //    icon squeezes "SU200001001" down to an ellipsis on a 360dp
+          //    phone. Remove lives on its own row at the bottom instead.
           Row(
             children: [
               Container(
@@ -259,14 +291,27 @@ class SensorCard extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: Text(
-                  sensor.unitId.isEmpty ? 'Unknown unit' : sensor.unitId,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: GlassTokens.textPrimary,
-                  ),
-                  overflow: TextOverflow.ellipsis,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      sensor.unitId.isEmpty ? 'Unknown unit' : sensor.unitId,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: GlassTokens.textPrimary,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (sensor.unitName.isNotEmpty)
+                      Text(
+                        sensor.unitName,
+                        style: TextStyle(
+                            fontSize: 12, color: GlassTokens.textMuted),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                  ],
                 ),
               ),
               _buildStatePill(),
@@ -282,7 +327,9 @@ class SensorCard extends StatelessWidget {
               Expanded(
                 child: _field(
                   'Sensor',
-                  sensor.sensorName.isEmpty ? sensor.sensorId : sensor.sensorName,
+                  sensor.sensorName.isEmpty
+                      ? sensor.sensorId
+                      : sensor.sensorName,
                 ),
               ),
               Expanded(
@@ -305,6 +352,25 @@ class SensorCard extends StatelessWidget {
               style: TextStyle(fontSize: 11, color: GlassTokens.textMuted),
             ),
           ],
+
+          // -- Remove --
+          //    No "change" affordance on purpose: removing drops back to the
+          //    "+ Add sensor" box, which is the one way in. One path in, one
+          //    path out — and it makes the rule wipe explicit instead of
+          //    hiding it behind a swap.
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: isSavingRules ? null : onRemoveSensor,
+              icon: const Icon(Icons.delete_outline, size: 18),
+              label: const Text('Remove'),
+              style: TextButton.styleFrom(
+                foregroundColor: GlassTokens.danger,
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -352,7 +418,12 @@ class SensorCard extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          sensor.value.isEmpty ? '—' : sensor.value,
+          // Trimmed to one decimal — see SensorReading.displayValue. The raw
+          // 33.45692475692 pushed this box wide enough to squeeze the Sensor
+          // and Type columns out of the row entirely.
+          sensor.displayValue,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: const TextStyle(
             fontSize: 24,
             height: 1.1,
@@ -368,7 +439,12 @@ class SensorCard extends StatelessWidget {
     );
 
     return Container(
-      constraints: const BoxConstraints(minWidth: 78),
+      // maxWidth as well as minWidth: this box is the only unbounded child of
+      // its Row, so without a ceiling ANY long value starves the two Expanded
+      // columns beside it and overflows the card. The formatting above should
+      // keep it well under 110, but the cap means a surprise value degrades
+      // to an ellipsis instead of breaking the layout.
+      constraints: const BoxConstraints(minWidth: 78, maxWidth: 110),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.8),

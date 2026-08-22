@@ -759,10 +759,25 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
   // ===========================================================================
 
   @override
-  Widget build(BuildContext context) {
+    Widget build(BuildContext context) {
     final bool isOnline = _isDirectMode
         ? true
         : isDeviceOnline(_device['vwv_last_seen']?.toString());
+
+    // Which control card owns the screen.
+    //
+    // The mode toggle is authoritative: when it has schedule or sensor on, the
+    // Control-by selector is hidden (9.3), so _controlMode is stale and must
+    // not get a vote. That stale value is what leaked a second card in sensor
+    // mode — schedule had its own `_isScheduleMode ||` override, sensor didn't.
+    //
+    // Both switches on → schedule wins, matching ModeToggleCard's own summary
+    // ("Schedule + Sensor — schedule with sensor override").
+    final String activeCard = _isScheduleMode
+        ? 'schedule'
+        : _isSensorMode
+            ? 'sensor'
+            : _controlMode;
 
     return GlassScaffold(
       // ─── App bar ───────────────────────────────────────────────────────
@@ -819,8 +834,9 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
               const SizedBox(height: 16),
             ],
 
-            // 9.3  Control mode selector (server mode + manual mode only)
-            if (!_isScheduleMode && !_isDirectMode) ...[
+            // 9.3  Control mode selector — manual only. EITHER automate mode
+            //      owning the screen hides it, not just schedule.
+            if (!_isScheduleMode && !_isSensorMode && !_isDirectMode) ...[
               ControlModeCard(
                 controlMode: _controlMode,
                 isDirectMode: _isDirectMode,
@@ -836,9 +852,8 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
               const SizedBox(height: 16),
             ],
 
-            // 9.4  Schedule card — either from the mode toggle or the
-            //      control-mode buttons
-            if (_isScheduleMode || _controlMode == 'schedule')
+            // 9.4  Schedule card
+            if (activeCard == 'schedule')
               ScheduleCard(
                 schedules: _schedules,
                 isSavingSchedule: _isSavingSchedule,
@@ -848,7 +863,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
                 onSavePressed: _saveSchedule,
               )
             // 9.5  Manual mode → Valve control card
-            else if (_controlMode == 'manual')
+            else if (activeCard == 'manual')
               ValveControlCard(
                 valveControlEnabled: _valveControlEnabled,
                 onValveControlEnabledChanged: (v) =>
@@ -889,7 +904,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
                 confirmationCountdown: _confirmation.countdown,
               )
             // 9.6  Sensor mode → sensor settings card
-            else if (_controlMode == 'sensor')
+            else if (activeCard == 'sensor')
               SensorCard(
                 onAddSensorPressed: _addSensor,
                 onRemoveSensor: _removeSensor,

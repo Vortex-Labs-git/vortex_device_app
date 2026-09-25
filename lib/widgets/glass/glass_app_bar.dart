@@ -1,4 +1,3 @@
-import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -56,23 +55,19 @@ class GlassAppBar extends StatelessWidget implements PreferredSizeWidget {
         ? GlassTokens.textPrimary
         : Color.lerp(tint, Colors.black, 0.35)!;
 
+    // Flat theme: the bar is opaque, so there is nothing to blur and no
+    // BackdropFilter is created. A single hairline along the bottom edge is
+    // what separates it from the content scrolling beneath.
     return ClipRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(
-          sigmaX: GlassTokens.blurStrong,
-          sigmaY: GlassTokens.blurStrong,
-        ),
         child: DecoratedBox(
           decoration: BoxDecoration(
             gradient: GlassTokens.paneGradient(
               tint: tint,
               tintStrength: 0.30,
-              topAlpha: 0.55,
-              bottomAlpha: 0.30,
             ),
             border: Border(
               bottom: BorderSide(
-                color: Colors.white.withValues(alpha: 0.55),
+                color: GlassTokens.paneBorder(tint: tint),
                 width: 1,
               ),
             ),
@@ -136,7 +131,6 @@ class GlassAppBar extends StatelessWidget implements PreferredSizeWidget {
             iconTheme: IconThemeData(color: titleColor),
           ),
         ),
-      ),
     );
   }
 }

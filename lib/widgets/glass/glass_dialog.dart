@@ -1,4 +1,3 @@
-import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 
@@ -34,16 +33,14 @@ Future<T?> showGlassDialog<T>({
         parent: animation,
         curve: Curves.easeOutCubic,
       );
-      // Sigma must stay above zero, hence the small floor.
-      final double sigma = 0.001 + 7 * curved.value;
-      return BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
-        child: FadeTransition(
-          opacity: curved,
-          child: ScaleTransition(
-            scale: Tween<double>(begin: 0.94, end: 1.0).animate(curved),
-            child: child,
-          ),
+      // Flat theme: no backdrop blur behind the dialog. A fade plus a small
+      // scale reads as "this came forward" without a saveLayer per frame; the
+      // barrier colour alone separates it from the content underneath.
+      return FadeTransition(
+        opacity: curved,
+        child: ScaleTransition(
+          scale: Tween<double>(begin: 0.96, end: 1.0).animate(curved),
+          child: child,
         ),
       );
     },

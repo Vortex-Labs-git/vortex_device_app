@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../services/esp_direct_service.dart';
 import '../../../theme/glass_theme.dart';
 import '../../../widgets/glass/glass.dart';
+import '../../../utils/app_log.dart';
 
 // =============================================================================
 // WIFI CREDENTIALS DIALOG (Direct mode)
@@ -64,7 +65,7 @@ Future<void> showWifiCredentialsDialog(BuildContext context) {
             password: password,
           );
 
-          print("📤 ESP32: set_valve_wifi ssid=$ssid");
+          logD("📤 ESP32: set_valve_wifi ssid=$ssid");
 
           // ESP32 will restart — the connection will be lost.
           Future.delayed(_restartGrace, () {

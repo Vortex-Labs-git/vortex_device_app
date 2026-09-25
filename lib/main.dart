@@ -7,7 +7,7 @@ import 'package:flutter/services.dart';
 import 'controllers/device_repository.dart';
 import 'controllers/esp_session.dart';
 import 'controllers/network_watcher.dart';
-import 'screens/main/main_screen.dart';
+import 'screens/app_gate.dart';
 import 'services/auth_service.dart';
 import 'theme/glass_theme.dart';
 
@@ -52,7 +52,7 @@ class VortaxLabsApp extends StatelessWidget {
       // Frosted-glass look. Tokens and the ThemeData live in
       // theme/glass_theme.dart; the panes themselves are in widgets/glass/.
       theme: GlassTokens.themeData(),
-      home: const MainScreen(),
+      home: const AppGate(),
     );
   }
 }

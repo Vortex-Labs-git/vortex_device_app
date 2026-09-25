@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../utils/app_log.dart';
 
 /// ============================================================
 /// Local Storage Service - Device Cache
@@ -38,9 +39,9 @@ class LocalStorageService {
       final jsonString = jsonEncode(devices);
       await prefs.setString(_deviceListKey, jsonString);
       await prefs.setString(_lastSyncKey, DateTime.now().toIso8601String());
-      print("💾 LocalStorage: Saved ${devices.length} devices to cache");
+      logD("💾 LocalStorage: Saved ${devices.length} devices to cache");
     } catch (e) {
-      print("❌ LocalStorage: Failed to save device list: $e");
+      logD("❌ LocalStorage: Failed to save device list: $e");
     }
   }
 
@@ -55,15 +56,15 @@ class LocalStorageService {
       final jsonString = prefs.getString(_deviceListKey);
 
       if (jsonString == null || jsonString.isEmpty) {
-        print("💾 LocalStorage: No cached device list found");
+        logD("💾 LocalStorage: No cached device list found");
         return [];
       }
 
       final List<dynamic> devices = jsonDecode(jsonString);
-      print("💾 LocalStorage: Loaded ${devices.length} devices from cache");
+      logD("💾 LocalStorage: Loaded ${devices.length} devices from cache");
       return devices;
     } catch (e) {
-      print("❌ LocalStorage: Failed to load device list: $e");
+      logD("❌ LocalStorage: Failed to load device list: $e");
       return [];
     }
   }
@@ -84,7 +85,7 @@ class LocalStorageService {
       return devices.any((device) =>
           device['id']?.toString() == deviceId);
     } catch (e) {
-      print("❌ LocalStorage: Error checking device ownership: $e");
+      logD("❌ LocalStorage: Error checking device ownership: $e");
       return false;
     }
   }
@@ -103,7 +104,7 @@ class LocalStorageService {
       );
       return match != null ? Map<String, dynamic>.from(match) : null;
     } catch (e) {
-      print("❌ LocalStorage: Error getting device by ID: $e");
+      logD("❌ LocalStorage: Error getting device by ID: $e");
       return null;
     }
   }
@@ -126,9 +127,9 @@ class LocalStorageService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_deviceListKey);
       await prefs.remove(_lastSyncKey);
-      print("💾 LocalStorage: Cache cleared");
+      logD("💾 LocalStorage: Cache cleared");
     } catch (e) {
-      print("❌ LocalStorage: Failed to clear cache: $e");
+      logD("❌ LocalStorage: Failed to clear cache: $e");
     }
   }
 }

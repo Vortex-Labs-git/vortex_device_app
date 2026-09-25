@@ -32,7 +32,9 @@ import '../../theme/glass_theme.dart';
 class GlassBackground extends StatefulWidget {
   final Widget child;
 
-  /// Draw the soft color orbs. Off gives a plain gradient.
+  /// Draw the soft colour orbs. Off by default in the flat theme — blurred
+  /// blobs behind opaque cards are invisible work, and where they did show
+  /// (behind the ground) they read as decoration for its own sake.
   final bool showOrbs;
 
   /// Slowly drift the orbs. See the note above before turning this on.
@@ -41,7 +43,7 @@ class GlassBackground extends StatefulWidget {
   const GlassBackground({
     super.key,
     required this.child,
-    this.showOrbs = true,
+    this.showOrbs = false,
     this.animated = false,
   });
 

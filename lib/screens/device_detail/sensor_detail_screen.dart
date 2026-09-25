@@ -7,6 +7,7 @@ import '../../models/sensor_unit.dart';
 import '../../theme/glass_theme.dart';
 import '../../widgets/glass/glass.dart';
 import '../sensor_config_screen.dart';
+import '../../utils/app_log.dart';
 
 // =============================================================================
 // SENSOR DETAIL SCREEN
@@ -146,7 +147,7 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
       if (!mounted) return;
       if (data['device_id']?.toString() != _deviceId) return; // only THIS unit
       setState(() => _unit = SensorUnit.fromDirectJson(data));
-      print('📱 ESP32 Direct: sensor_unit_info, '
+      logD('📱 ESP32 Direct: sensor_unit_info, '
           '${data['no_sensors']} sensors');
     });
 
@@ -551,7 +552,7 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
                         password: password,
                       );
 
-                      print("📤 ESP32: set_device_wifi ssid=$ssid");
+                      logD("📤 ESP32: set_device_wifi ssid=$ssid");
 
                       // ESP32 will restart — connection will be lost
                       Future.delayed(const Duration(seconds: 3), () {

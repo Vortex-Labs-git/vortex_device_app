@@ -7,6 +7,7 @@ import '../theme/glass_theme.dart';
 import '../widgets/glass/glass.dart';
 
 import '../services/esp_direct_service.dart';
+import '../utils/app_log.dart';
 
 /// Sensor Configuration Screen (ESP32 direct mode)
 ///
@@ -185,7 +186,7 @@ class _SensorConfigScreenState extends State<SensorConfigScreen> {
         return;
       }
       _initialRetryCount++;
-      print(
+      logD(
         '🔁 SensorConfig: retry get_sensor_config ($_initialRetryCount/$_maxInitialRetries)',
       );
       esp.requestSensorConfig();
@@ -224,7 +225,7 @@ class _SensorConfigScreenState extends State<SensorConfigScreen> {
 
     final parsed = _parseSensorData(msg['sensor_data']);
     if (parsed.isEmpty) {
-      print('⚠️ SensorConfig: reply had no parseable sensor_data: $msg');
+      logD('⚠️ SensorConfig: reply had no parseable sensor_data: $msg');
       return;
     }
 
@@ -236,7 +237,7 @@ class _SensorConfigScreenState extends State<SensorConfigScreen> {
         final id = m['sensor_id']?.toString() ?? '';
         final idx = _entries.indexWhere((e) => e.id == id);
         if (idx == -1) {
-          print('⚠️ SensorConfig: unknown sensor_id "$id" in reply — ignored');
+          logD('⚠️ SensorConfig: unknown sensor_id "$id" in reply — ignored');
           continue;
         }
         final type = m['sensor_type']?.toString() ?? '';
@@ -252,7 +253,7 @@ class _SensorConfigScreenState extends State<SensorConfigScreen> {
       _initialConfigLoaded = true;
       _isLoadingInitial = false;
       _initialRetryTimer?.cancel();
-      print(
+      logD(
         '✅ SensorConfig: initial config loaded '
         '(${parsed.length} configured of $_totalSlots slots)',
       );

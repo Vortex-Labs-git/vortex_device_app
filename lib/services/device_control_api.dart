@@ -3,6 +3,7 @@ import '../models/valve_device.dart';
 
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../utils/app_log.dart';
 
 // =============================================================================
 // DEVICE CONTROL API
@@ -228,7 +229,7 @@ class DeviceControlApi {
         'device_id': deviceId,
       };
 
-      print("📤 $logTag Request: ${jsonEncode(body)}");
+      logD("📤 $logTag Request: ${jsonEncode(body)}");
 
       final response = await http.post(
         Uri.parse(controlEndpoint),
@@ -239,7 +240,7 @@ class DeviceControlApi {
         body: jsonEncode(body),
       );
 
-      print("$logTag Response: ${response.body}");
+      logD("$logTag Response: ${response.body}");
 
       final decoded = jsonDecode(response.body);
       if (decoded is! Map) {
@@ -267,7 +268,7 @@ class DeviceControlApi {
         units: SensorUnitOption.listFromResponse(data),
       );
     } catch (e) {
-      print("$logTag Error: $e");
+      logD("$logTag Error: $e");
       return SensorUnitsResult._(success: false, error: e);
     }
   }
@@ -284,7 +285,7 @@ class DeviceControlApi {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('access_token');
 
-      print("📤 $logTag Request: ${jsonEncode(body)}");
+      logD("📤 $logTag Request: ${jsonEncode(body)}");
 
       final response = await http.post(
         Uri.parse(controlEndpoint),
@@ -295,7 +296,7 @@ class DeviceControlApi {
         body: jsonEncode(body),
       );
 
-      print("$logTag Response: ${response.body}");
+      logD("$logTag Response: ${response.body}");
 
       final result = jsonDecode(response.body);
       if (result['success'] == true) {
@@ -303,7 +304,7 @@ class DeviceControlApi {
       }
       return DeviceApiResult.serverError(result['message']?.toString());
     } catch (e) {
-      print("$logTag Error: $e");
+      logD("$logTag Error: $e");
       return DeviceApiResult.connectionFailed(e);
     }
   }

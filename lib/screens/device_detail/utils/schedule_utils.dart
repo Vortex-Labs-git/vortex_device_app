@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import '../../../models/valve_device.dart';
+import '../../../utils/app_log.dart';
 
 // =============================================================================
 // SCHEDULE UTILS
@@ -66,7 +67,7 @@ List<ScheduleEntry>? parseSchedulePayload(Map<String, dynamic> data) {
     } else if (scheduleJson is List) {
       raw = scheduleJson;
     } else {
-      print("⚠️ Unexpected schedule format: ${scheduleJson.runtimeType}");
+      logD("⚠️ Unexpected schedule format: ${scheduleJson.runtimeType}");
       return null;
     }
 
@@ -75,7 +76,7 @@ List<ScheduleEntry>? parseSchedulePayload(Map<String, dynamic> data) {
         .expand((e) => ScheduleEntry.listFromJson(Map<String, dynamic>.from(e)))
         .toList();
   } catch (e) {
-    print("❌ Error parsing schedule data: $e");
+    logD("❌ Error parsing schedule data: $e");
     return null;
   }
 }

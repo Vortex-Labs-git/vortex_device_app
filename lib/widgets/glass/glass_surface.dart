@@ -131,7 +131,9 @@ class GlassSurface extends StatelessWidget {
       child: content,
     );
 
-    if (enableBlur) {
+    // blur == 0 in the flat theme: creating a BackdropFilter with sigma 0
+    // still allocates a saveLayer every frame, so skip the widget entirely.
+    if (enableBlur && blur > 0) {
       pane = BackdropFilter(
         filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
         child: pane,

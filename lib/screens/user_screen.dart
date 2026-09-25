@@ -4,7 +4,7 @@ import '../services/auth_service.dart';
 import '../theme/glass_theme.dart';
 import '../widgets/glass/glass.dart';
 import 'login/login_screen.dart';
-import 'main/main_screen.dart';
+import 'app_gate.dart';
 
 class UserScreen extends StatefulWidget {
   const UserScreen({super.key});
@@ -21,12 +21,9 @@ class _UserScreenState extends State<UserScreen> {
       return LoginScreen(
         onLoginSuccess: () {
           DeviceRepository.instance.reloadForLogin();
-          // Replace entire navigation stack with fresh MainScreen
-          // This ensures HomeScreen re-initializes with WebSocket connected
-          Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(builder: (_) => const MainScreen()),
-            (route) => false,
-          );
+          // Re-run AppGate: a session exists now, so it advances to the
+          // permission gate and then to MainScreen.
+          appGateRevision.value++;
         },
       );
     }
@@ -377,12 +374,11 @@ class _UserScreenState extends State<UserScreen> {
               DeviceRepository.instance.clearForLogout();
 
               if (mounted) {
-                // Replace entire navigation stack with fresh MainScreen
+                // Re-run AppGate: session exists now, so it moves to the permission
                 // This ensures all pages (Home, User, etc.) rebuild with logged-out state
-                Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (_) => const MainScreen()),
-                  (route) => false,
-                );
+                // Send the app back through AppGate, which drops straight to
+                // the login screen now that the session is gone.
+                appGateRevision.value++;
               }
             },
           ),

@@ -5,6 +5,7 @@ import '../services/local_storage_service.dart';
 import '../services/websocket_service.dart';
 import 'esp_session.dart';
 import 'network_watcher.dart';
+import '../utils/app_log.dart';
 
 // =============================================================================
 // DEVICE REPOSITORY  (controller — single source of truth for the home list)
@@ -429,8 +430,7 @@ class DeviceRepository {
   }
 
   void _log(String message) {
-    // ignore: avoid_print
-    print('📋 $message'); // console, matching service style
+    logD('📋 $message'); // console, matching service style
     _logController.add(message); // debug terminal, when re-enabled
   }
 }

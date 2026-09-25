@@ -5,6 +5,7 @@ import 'package:network_info_plus/network_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../services/websocket_service.dart';
+import '../utils/app_log.dart';
 
 // =============================================================================
 // NETWORK WATCHER  (controller — sensing only)
@@ -201,23 +202,20 @@ class NetworkWatcher with WidgetsBindingObserver {
       {NetworkCheckTrigger trigger = NetworkCheckTrigger.manual}) async {
     try {
       // 1. Location permission (required to read SSID on Android).
-      //    Same as legacy: silently request if missing — this may pop the
-      //    system dialog on a manual refresh, which is existing behavior.
+      //    SENSING ONLY — this never pops the system dialog. Requesting is
+      //    requestLocationPermission(), which the UI calls after showing the
+      //    disclosure. See that method for why.
       final locationStatus = await Permission.location.status;
       if (!locationStatus.isGranted) {
-        final result = await Permission.location.request();
-        if (!result.isGranted) {
-          _log('WiFi: Location permission DENIED');
-          // Legacy just returned here without touching SSID state — preserve
-          // that: keep prior ssid/isVortexAp, only record the denial.
-          _emit(NetworkState(
-            ssid: _current.ssid,
-            isVortexAp: _current.isVortexAp,
-            permissionGranted: false,
-            trigger: trigger,
-          ));
-          return _current;
-        }
+        _log('WiFi: Location permission not granted — SSID unreadable');
+        // Keep prior ssid/isVortexAp, only record the denial (legacy behavior).
+        _emit(NetworkState(
+          ssid: _current.ssid,
+          isVortexAp: _current.isVortexAp,
+          permissionGranted: false,
+          trigger: trigger,
+        ));
+        return _current;
       }
 
       // 2. Read SSID and detect a Vortex device hotspot ("Vortex_" prefix
@@ -241,6 +239,31 @@ class NetworkWatcher with WidgetsBindingObserver {
     return _current;
   }
 
+  // -- Permission --
+
+  /// True when location permission is already granted.
+  Future<bool> get hasLocationPermission async =>
+      (await Permission.location.status).isGranted;
+
+  /// Shows the system permission prompt and re-senses on success.
+  ///
+  /// CALL ONLY AFTER THE USER HAS SEEN THE DISCLOSURE. Android requires
+  /// location permission to read the connected network's SSID, and Play policy
+  /// requires an in-app explanation *before* the system dialog whenever the
+  /// reason for a sensitive permission isn't self-evident — which it isn't
+  /// here, since the app wants the SSID, not the user's location.
+  ///
+  /// checkNow() deliberately does not do this: it runs from main() before any
+  /// widget exists, so there would be nowhere to show the disclosure.
+  Future<bool> requestLocationPermission() async {
+    final result = await Permission.location.request();
+    _log('WiFi: Location permission ${result.isGranted ? 'GRANTED' : 'DENIED'}');
+    if (result.isGranted) {
+      await checkNow(trigger: NetworkCheckTrigger.manual);
+    }
+    return result.isGranted;
+  }
+
   // -- Helpers --
 
   void _emit(NetworkState state) {
@@ -249,8 +272,7 @@ class NetworkWatcher with WidgetsBindingObserver {
   }
 
   void _log(String message) {
-    // ignore: avoid_print
-    print('📶 $message'); // console, matching service style
+    logD('📶 $message'); // console, matching service style
     _logController.add(message); // debug terminal, when re-enabled
   }
 }

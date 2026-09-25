@@ -34,6 +34,7 @@ import 'widgets/motor_calibration_button.dart';
 import 'widgets/schedule_card.dart';
 import 'widgets/sensor_card.dart';
 import 'widgets/valve_control_card.dart';
+import '../../utils/app_log.dart';
 
 // =============================================================================
 // DEVICE DETAIL SCREEN
@@ -142,7 +143,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
   void initState() {
     super.initState();
     _device = Map<String, dynamic>.from(widget.deviceData);
-    print("🔍 INIT _device = $_device");
+    logD("🔍 INIT _device = $_device");
 
     _confirmation = ValveConfirmationController(
       onChanged: () {
@@ -288,7 +289,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
       final parsed = parseSchedulePayload(data);
       if (parsed != null) {
         setState(() => _schedules = parsed);
-        print("📅 Loaded ${_schedules.length} schedule entries from server");
+        logD("📅 Loaded ${_schedules.length} schedule entries from server");
       }
     }
 
@@ -302,7 +303,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
           _sensorRules = sensor.rules;
         }
       });
-      print("🌡️ Loaded ${sensor.rules.length} sensor rules from server");
+      logD("🌡️ Loaded ${sensor.rules.length} sensor rules from server");
     }
   }
 

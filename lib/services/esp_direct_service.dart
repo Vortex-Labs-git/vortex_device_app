@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/status.dart' as status;
+import '../utils/app_log.dart';
 
 /// ESP32 Direct Communication Service
 /// 
@@ -81,7 +82,7 @@ class EspDirectService {
     int port = defaultPort,
   }) async {
     try {
-      print('🔄 ESP32: Connecting to ws://$ip:$port$wsPath');
+      logD('🔄 ESP32: Connecting to ws://$ip:$port$wsPath');
       
       final hadSocket = _channel != null;
       await disconnect();
@@ -90,7 +91,7 @@ class EspDirectService {
       // moment after close, and a reconnect inside that window is refused —
       // which would leave us with no link at all.
       if (hadSocket) {
-        print('⏳ ESP32: Waiting ${slotReleaseDelay.inMilliseconds}ms for the ''old client slot to free up');
+        logD('⏳ ESP32: Waiting ${slotReleaseDelay.inMilliseconds}ms for the ''old client slot to free up');
         await Future.delayed(slotReleaseDelay);
       }
       
@@ -108,7 +109,7 @@ class EspDirectService {
       _connectedDeviceIp = ip;
       _connectionStateController.add(true);
       
-      print('✅ ESP32: WebSocket connected!');
+      logD('✅ ESP32: WebSocket connected!');
       
       // Capture THIS channel so the callbacks below can tell whether they
       // belong to the current connection. During a forced reconnect the
@@ -119,18 +120,18 @@ class EspDirectService {
       channel.stream.listen(
         _handleMessage,
         onError: (error) {
-          print('❌ ESP32: WebSocket error: $error');
+          logD('❌ ESP32: WebSocket error: $error');
           if (_channel == channel) _handleDisconnect();
         },
         onDone: () {
-          print('🔌 ESP32: WebSocket closed');
+          logD('🔌 ESP32: WebSocket closed');
           if (_channel == channel) _handleDisconnect();
         },
       );
       
       return true;
     } catch (e) {
-      print('❌ ESP32: Connection failed: $e');
+      logD('❌ ESP32: Connection failed: $e');
       _handleDisconnect();
       return false;
     }
@@ -172,8 +173,8 @@ class EspDirectService {
       final data = jsonDecode(message.toString());
       final event = data['event'] as String?;
       
-      print('📨 ESP32 Event: $event');
-      print('📨 Full message: $message');
+      logD('📨 ESP32 Event: $event');
+      logD('📨 Full message: $message');
       
       switch (event) {
         // ── Authentication response ──
@@ -184,7 +185,7 @@ class EspDirectService {
           _isAuthenticated = true;
           _connectedDeviceId = data['device_id'];
           _deviceInfoController.add(Map<String, dynamic>.from(data));
-          print('✅ ESP32: Authenticated! Device ID: $_connectedDeviceId');
+          logD('✅ ESP32: Authenticated! Device ID: $_connectedDeviceId');
           break;
         
         // ── Full valve state data ──
@@ -246,21 +247,21 @@ class EspDirectService {
           break;
         
         default:
-          print('⚠️ ESP32: Unknown event type: $event');
+          logD('⚠️ ESP32: Unknown event type: $event');
       }
     } catch (e) {
-      print('❌ ESP32: Parse error: $e');
+      logD('❌ ESP32: Parse error: $e');
     }
   }
 
   /// Send JSON message to ESP32
   void _send(Map<String, dynamic> data) {
     if (!_isConnected || _channel == null) {
-      print('⚠️ ESP32: Not connected');
+      logD('⚠️ ESP32: Not connected');
       return;
     }
     final message = jsonEncode(data);
-    print('📤 ESP32 Sending: $message');
+    logD('📤 ESP32 Sending: $message');
     _channel!.sink.add(message);
   }
 
@@ -324,7 +325,7 @@ class EspDirectService {
     String? deviceName,
   }) {
     if (!_isAuthenticated) {
-      print('⚠️ ESP32: Not authenticated. Call authenticate() first.');
+      logD('⚠️ ESP32: Not authenticated. Call authenticate() first.');
       return;
     }
     _send({
@@ -362,7 +363,7 @@ class EspDirectService {
     String? deviceName,
   }) {
     if (!_isAuthenticated) {
-      print('⚠️ ESP32: Not authenticated. Call authenticate() first.');
+      logD('⚠️ ESP32: Not authenticated. Call authenticate() first.');
       return;
     }
     _send({
@@ -395,7 +396,7 @@ class EspDirectService {
   /// ```
   void setValveAngle({required int angle, String? deviceName}) {
     if (!_isAuthenticated) {
-      print('⚠️ ESP32: Not authenticated. Call authenticate() first.');
+      logD('⚠️ ESP32: Not authenticated. Call authenticate() first.');
       return;
     }
     _send({
@@ -445,7 +446,7 @@ class EspDirectService {
   /// ```
   void requestMotorCalibration() {
     if (!_isAuthenticated) {
-      print('⚠️ ESP32: Not authenticated. Call authenticate() first.');
+      logD('⚠️ ESP32: Not authenticated. Call authenticate() first.');
       return;
     }
     _send({
@@ -476,7 +477,7 @@ class EspDirectService {
   /// ```
   void setMotorRotation({required bool clockwise}) {
     if (!_isAuthenticated) {
-      print('⚠️ ESP32: Not authenticated. Call authenticate() first.');
+      logD('⚠️ ESP32: Not authenticated. Call authenticate() first.');
       return;
     }
     _send({
@@ -513,7 +514,7 @@ class EspDirectService {
     required int openLimit,
   }) {
     if (!_isAuthenticated) {
-      print('⚠️ ESP32: Not authenticated. Call authenticate() first.');
+      logD('⚠️ ESP32: Not authenticated. Call authenticate() first.');
       return;
     }
     _send({
@@ -556,7 +557,7 @@ class EspDirectService {
     required String password,
   }) {
     if (!_isAuthenticated) {
-      print('⚠️ ESP32: Not authenticated. Call authenticate() first.');
+      logD('⚠️ ESP32: Not authenticated. Call authenticate() first.');
       return;
     }
     _send({
@@ -595,7 +596,7 @@ class EspDirectService {
     required String password,
   }) {
     if (!_isAuthenticated) {
-      print('⚠️ ESP32: Not authenticated. Call authenticate() first.');
+      logD('⚠️ ESP32: Not authenticated. Call authenticate() first.');
       return;
     }
     _send({
@@ -630,7 +631,7 @@ class EspDirectService {
   /// ```
   void requestSensorConfig() {
     if (!_isAuthenticated) {
-      print('⚠️ ESP32: Not authenticated. Call authenticate() first.');
+      logD('⚠️ ESP32: Not authenticated. Call authenticate() first.');
       return;
     }
     _send({
@@ -662,7 +663,7 @@ class EspDirectService {
     required List<Map<String, dynamic>> sensors,
   }) {
     if (!_isAuthenticated) {
-      print('⚠️ ESP32: Not authenticated. Call authenticate() first.');
+      logD('⚠️ ESP32: Not authenticated. Call authenticate() first.');
       return;
     }
     _send({
@@ -703,7 +704,7 @@ class EspDirectService {
         deviceId: _connectedDeviceId!,
       );
     } else {
-      print('⚠️ ESP32: No device ID available. Authenticate first.');
+      logD('⚠️ ESP32: No device ID available. Authenticate first.');
     }
   }
 

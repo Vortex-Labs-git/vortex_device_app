@@ -1,11 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'package:web_socket_channel/io.dart';
-import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/status.dart' as status;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'auth_service.dart';
+import '../utils/app_log.dart';
 
 /// ============================================================
 /// Vortex Labs Global WebSocket Service
@@ -95,7 +94,7 @@ class WebSocketService {
   /// to avoid an infinite loop (connect → refresh → connect → refresh...).
   static Future<bool> connect({bool skipExpiryCheck = false}) async {
     if (_isConnected || _isConnecting) {
-      print("🔌 WS: Already connected or connecting");
+      logD("🔌 WS: Already connected or connecting");
       return _isConnected;
     }
 
@@ -107,7 +106,7 @@ class WebSocketService {
       final token = prefs.getString('access_token');
 
       if (token == null) {
-        print("❌ WS: No access_token found");
+        logD("❌ WS: No access_token found");
         _isConnecting = false;
         return false;
       }
@@ -115,16 +114,16 @@ class WebSocketService {
       // ✅ Step 1.5: Check token expiry BEFORE connecting
       // Skip this check if we just refreshed the token (avoids loop)
       if (!skipExpiryCheck && AuthService.isTokenExpired()) {
-        print("🔑 WS: Token expired — attempting silent refresh before connect...");
+        logD("🔑 WS: Token expired — attempting silent refresh before connect...");
         _isConnecting = false;
         final success = await AuthService.refreshTokenAndReconnect();
         return success;
       }
 
-      print("🔌 WS: Connecting to $_wsHost:$_wsPort...");
+      logD("🔌 WS: Connecting to $_wsHost:$_wsPort...");
       return await _connectWithToken(token);
     } on TimeoutException catch (e) {
-      print("⏱️ WS: $e");
+      logD("⏱️ WS: $e");
       _isConnected = false;
       _isConnecting = false;
       _channel?.sink.close();
@@ -133,7 +132,7 @@ class WebSocketService {
       // Don't auto-reconnect on timeout — user may be in AP mode intentionally
       return false;
     } catch (e) {
-      print("❌ WS: Connection failed: $e");
+      logD("❌ WS: Connection failed: $e");
       _isConnected = false;
       _isConnecting = false;
       _connectionController.add(false);
@@ -163,7 +162,7 @@ class WebSocketService {
         },
       );
 
-      print("✅ WS: Connected!");
+      logD("✅ WS: Connected!");
       _isConnected = true;
       _isConnecting = false;
       _reconnectAttempts = 0;
@@ -174,13 +173,13 @@ class WebSocketService {
       _channel!.stream.listen(
         _handleMessage,
         onError: (error) {
-          print("❌ WS: Stream error: $error");
+          logD("❌ WS: Stream error: $error");
           _handleDisconnect();
         },
         onDone: () {
           final closeCode = _channel?.closeCode;
           final closeReason = _channel?.closeReason;
-          print("🔌 WS: Connection closed (code: $closeCode, reason: $closeReason)");
+          logD("🔌 WS: Connection closed (code: $closeCode, reason: $closeReason)");
 
           // ✅ Detect auth rejection: common close codes for auth failure
           // 4001/4003 = custom auth codes, 1008 = policy violation, 403 in reason
@@ -192,7 +191,7 @@ class WebSocketService {
                       closeReason.toLowerCase().contains('token') ||
                       closeReason.toLowerCase().contains('expired') ||
                       closeReason.toLowerCase().contains('unauthorized')))) {
-            print("🔑 WS: Auth rejection detected — attempting token refresh...");
+            logD("🔑 WS: Auth rejection detected — attempting token refresh...");
             _handleAuthRejection();
             return;
           }
@@ -227,7 +226,7 @@ class WebSocketService {
     _currentDeviceId = deviceId;
 
     if (!_isConnected || _channel == null) {
-      print("⚠️ WS: Not connected, will subscribe when connected");
+      logD("⚠️ WS: Not connected, will subscribe when connected");
       return;
     }
 
@@ -237,7 +236,7 @@ class WebSocketService {
       if (deviceId != null) 'device_id': deviceId,
     });
 
-    print("📤 WS: Subscribing → $msg");
+    logD("📤 WS: Subscribing → $msg");
     _channel!.sink.add(msg);
   }
 
@@ -245,7 +244,7 @@ class WebSocketService {
   // DISCONNECT - Call on logout
   // ============================================================
   static void disconnect() {
-    print("🔌 WS: Disconnecting...");
+    logD("🔌 WS: Disconnecting...");
     _reconnectTimer?.cancel();
     _reconnectAttempts = 0;
     _currentSubscription = null;
@@ -263,7 +262,7 @@ class WebSocketService {
   // ============================================================
   static void _handleMessage(dynamic message) {
     final msgStr = message.toString();
-    print("📥 WS: $msgStr");
+    logD("📥 WS: $msgStr");
     _rawMessageController.add(msgStr);
 
     try {
@@ -275,7 +274,7 @@ class WebSocketService {
     
         case 'devices_data':
           final List<dynamic> deviceList = data['device_list'] ?? [];
-          print("📊 WS: Received ${deviceList.length} devices");
+          logD("📊 WS: Received ${deviceList.length} devices");
           _deviceListController.add(deviceList);
           break;
         // ---- Device Detail Update ----
@@ -283,14 +282,14 @@ class WebSocketService {
           final Map<String, dynamic> deviceData = data['data'] != null
               ? Map<String, dynamic>.from(data['data'])
               : Map<String, dynamic>.from(data);
-          print(
+          logD(
               "📊 WS: Received basic detail for ${data['device_id'] ?? data['id']}");
           _deviceDetailController.add(deviceData);
           break;
 
         // ---- Device Schedule Update ----
         case 'device_schedule':
-          print("📅 WS: Received schedule for device ${data['device_id']}");
+          logD("📅 WS: Received schedule for device ${data['device_id']}");
           _scheduleController.add(Map<String, dynamic>.from(data));
           break;
 
@@ -298,7 +297,7 @@ class WebSocketService {
         default:
           if (data.containsKey('error')) {
             final errorMsg = data['error'].toString().toLowerCase();
-            print("⚠️ WS: Server error: ${data['error']}");
+            logD("⚠️ WS: Server error: ${data['error']}");
 
             // ✅ Detect auth errors in message payload
             if (errorMsg.contains('token') ||
@@ -306,15 +305,15 @@ class WebSocketService {
                 errorMsg.contains('expired') ||
                 errorMsg.contains('unauthorized') ||
                 errorMsg.contains('jwt')) {
-              print("🔑 WS: Auth error in message — refreshing token...");
+              logD("🔑 WS: Auth error in message — refreshing token...");
               _handleAuthRejection();
             }
           } else {
-            print("⚠️ WS: Unknown event: $event");
+            logD("⚠️ WS: Unknown event: $event");
           }
       }
     } catch (e) {
-      print("❌ WS: Parse error: $e");
+      logD("❌ WS: Parse error: $e");
     }
   }
 
@@ -323,7 +322,7 @@ class WebSocketService {
   // ============================================================
   static Future<void> _handleAuthRejection() async {
     if (_isRefreshing) {
-      print("🔑 WS: Already refreshing, skipping...");
+      logD("🔑 WS: Already refreshing, skipping...");
       return;
     }
     _isRefreshing = true;
@@ -332,17 +331,17 @@ class WebSocketService {
     _channel = null;
     _connectionController.add(false);
 
-    print("🔑 WS: Attempting token refresh and reconnect...");
+    logD("🔑 WS: Attempting token refresh and reconnect...");
     final success = await AuthService.refreshTokenAndReconnect();
 
     if (success) {
-      print("✅ WS: Token refreshed and reconnected!");
+      logD("✅ WS: Token refreshed and reconnected!");
       // Re-subscribe to whatever we were listening to
       if (_currentSubscription != null) {
         subscribeTo(_currentSubscription!, deviceId: _currentDeviceId);
       }
     } else {
-      print("❌ WS: Token refresh failed — user may need to re-login");
+      logD("❌ WS: Token refresh failed — user may need to re-login");
       _isRefreshing = false;
       // Don't schedule normal reconnect — it would fail with same expired token
     }
@@ -361,12 +360,12 @@ class WebSocketService {
 
   static void _scheduleReconnect() {
     if (_reconnectAttempts >= _maxReconnectAttempts) {
-      print("❌ WS: Max reconnect attempts reached ($_maxReconnectAttempts)");
+      logD("❌ WS: Max reconnect attempts reached ($_maxReconnectAttempts)");
       return;
     }
 
     _reconnectAttempts++;
-    print("🔄 WS: Reconnecting in ${_reconnectDelay.inSeconds}s (attempt $_reconnectAttempts/$_maxReconnectAttempts)...");
+    logD("🔄 WS: Reconnecting in ${_reconnectDelay.inSeconds}s (attempt $_reconnectAttempts/$_maxReconnectAttempts)...");
 
     _reconnectTimer?.cancel();
     _reconnectTimer = Timer(_reconnectDelay, () {

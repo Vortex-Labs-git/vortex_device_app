@@ -4,6 +4,7 @@ import '../services/esp_direct_service.dart';
 import '../services/auth_service.dart';
 import '../theme/glass_theme.dart';
 import '../widgets/glass/glass.dart';
+import '../utils/app_log.dart';
 
 /// WiFi Setup Screen for ESP32 Direct Communication
 /// Message structure follows Vortex_WiFi_Valve_Software_Architecture.pdf
@@ -71,7 +72,7 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
     // ESP32 sends this after valid passkey
     _deviceInfoSub = _espService.deviceInfoStream.listen((data) {
       if (!mounted) return;
-      print('📱 Device Info received: $data');
+      logD('📱 Device Info received: $data');
       setState(() {
         _deviceInfo = data;
         _errorMessage = null;
@@ -86,7 +87,7 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
     // Valve data response
     _valveDataSub = _espService.valveDataStream.listen((data) {
       if (!mounted) return;
-      print('📱 Valve Data received: $data');
+      logD('📱 Valve Data received: $data');
       setState(() => _valveData = data);
     });
 

@@ -4,6 +4,7 @@ import '../services/auth_service.dart';
 import '../services/esp_direct_service.dart';
 import '../services/local_storage_service.dart';
 import 'network_watcher.dart';
+import '../utils/app_log.dart';
 
 // =============================================================================
 // ESP SESSION  (controller — direct-connection policy state machine)
@@ -345,8 +346,7 @@ class EspSession {
   }
 
   void _log(String message) {
-    // ignore: avoid_print
-    print('🔌 $message'); // console, matching service style
+    logD('🔌 $message'); // console, matching service style
     _logController.add(message); // debug terminal, when re-enabled
   }
 }

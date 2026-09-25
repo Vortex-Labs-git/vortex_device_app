@@ -44,7 +44,7 @@ class GlassScaffold extends StatelessWidget {
     this.bottomNavigationBar,
     this.floatingActionButtonLocation,
     this.animatedBackground = false,
-    this.showOrbs = true,
+    this.showOrbs = false,
     this.useSafeArea = true,
     this.resizeToAvoidBottomInset = true,
   });

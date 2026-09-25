@@ -1,4 +1,3 @@
-import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 
@@ -68,34 +67,24 @@ class GlassBottomNav extends StatelessWidget {
         height: barHeight,
         decoration: BoxDecoration(
           borderRadius: radius,
+          // Floating bar, so it keeps a real (if quiet) shadow — this is the
+          // one place elevation carries meaning rather than decoration.
           boxShadow: [
             BoxShadow(
-              color: GlassTokens.textPrimary.withValues(alpha: 0.16),
-              blurRadius: 28,
-              offset: const Offset(0, 10),
+              color: GlassTokens.textPrimary.withValues(alpha: 0.08),
+              blurRadius: 12,
+              offset: const Offset(0, 3),
             ),
           ],
         ),
         child: ClipRRect(
           borderRadius: radius,
-          child: BackdropFilter(
-            filter: ImageFilter.blur(
-              sigmaX: GlassTokens.blurStrong,
-              sigmaY: GlassTokens.blurStrong,
-            ),
-            child: DecoratedBox(
+          child: DecoratedBox(
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Colors.white.withValues(alpha: 0.72),
-                    Colors.white.withValues(alpha: 0.46),
-                  ],
-                ),
+                color: GlassTokens.surface,
                 borderRadius: radius,
                 border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.75),
+                  color: GlassTokens.border,
                   width: 1,
                 ),
               ),
@@ -161,7 +150,6 @@ class GlassBottomNav extends StatelessWidget {
             ),
           ),
         ),
-      ),
     );
   }
 }

@@ -7,6 +7,7 @@ import '../widgets/glass/glass.dart';
 import 'package:flutter/services.dart';
 
 import '../services/esp_direct_service.dart';
+import '../utils/app_log.dart';
 
 /// Motor Calibration Screen
 ///
@@ -144,7 +145,7 @@ class _MotorCalibrationScreenState extends State<MotorCalibrationScreen> {
         return;
       }
       _initialRetryCount++;
-      print(
+      logD(
         '🔁 Calibration: retry get_motor_calibration ($_initialRetryCount/$_maxInitialRetries)',
       );
       esp.requestMotorCalibration();
@@ -161,7 +162,7 @@ class _MotorCalibrationScreenState extends State<MotorCalibrationScreen> {
 
     final encoderData = msg['encoder_data'];
     if (encoderData is! Map) {
-      print('⚠️ Calibration: reply missing encoder_data: $msg');
+      logD('⚠️ Calibration: reply missing encoder_data: $msg');
       return;
     }
 
@@ -184,7 +185,7 @@ class _MotorCalibrationScreenState extends State<MotorCalibrationScreen> {
         _initialLimitsLoaded = true;
         _isLoadingInitial = false;
         _initialRetryTimer?.cancel();
-        print(
+        logD(
           '✅ Calibration: initial limits loaded (close=$closeLimit, open=$openLimit)',
         );
       }

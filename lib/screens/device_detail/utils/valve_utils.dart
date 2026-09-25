@@ -1,3 +1,4 @@
+import '../../../utils/app_log.dart';
 // =============================================================================
 // VALVE UTILS
 // =============================================================================
@@ -21,7 +22,7 @@ bool isDeviceOnline(String? lastSeen) {
     final lastSeenTime = DateTime.parse(lastSeen);
     return DateTime.now().difference(lastSeenTime) <= kDeviceOnlineWindow;
   } catch (e) {
-    print("⚠️ Error parsing vwv_last_seen: $e");
+    logD("⚠️ Error parsing vwv_last_seen: $e");
     return false;
   }
 }

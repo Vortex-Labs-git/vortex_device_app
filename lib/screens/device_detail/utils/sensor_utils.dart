@@ -1,4 +1,5 @@
 import '../../../models/valve_device.dart';
+import '../../../utils/app_log.dart';
 
 // =============================================================================
 // SENSOR UTILS
@@ -62,7 +63,7 @@ SensorPayload? parseSensorPayload(Map<String, dynamic> data) {
 
     return SensorPayload(reading: reading, rules: rules);
   } catch (e) {
-    print("❌ Error parsing sensor data: $e");
+    logD("❌ Error parsing sensor data: $e");
     return null;
   }
 }

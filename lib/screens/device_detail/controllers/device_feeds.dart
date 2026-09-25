@@ -2,6 +2,7 @@ import 'dart:async';
 
 import '../../../services/esp_direct_service.dart';
 import '../../../services/websocket_service.dart';
+import '../../../utils/app_log.dart';
 
 // =============================================================================
 // DEVICE FEEDS
@@ -104,7 +105,7 @@ class DirectDeviceFeed {
       final raw = data['get_valvedata'];
       final valveData =
           raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
-      print("📱 ESP32 Direct: valve data $valveData");
+      logD("📱 ESP32 Direct: valve data $valveData");
       onValveData(valveData);
     });
 
@@ -128,7 +129,7 @@ class DirectDeviceFeed {
 
   /// Sends an angle command straight to the ESP32, then re-reads the valve.
   void setValveAngle(int angle) {
-    print("📤 ESP32 Direct: set_valve_basic angle=$angle");
+    logD("📤 ESP32 Direct: set_valve_basic angle=$angle");
     _esp.setValveAngle(angle: angle, deviceName: _deviceName);
 
     Future.delayed(_postCommandRefreshDelay, requestValveData);

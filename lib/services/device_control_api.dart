@@ -214,9 +214,13 @@ class DeviceControlApi {
   /// This one cannot go through _post(): it returns DATA, and the reply has no
   /// `success` field — it identifies itself with `event: user_sensor_units`.
   /// So success is "we got a parseable object back that isn't an error".
+  ///
+  /// [endpoint] defaults to control_device.php; the smart plug passes
+  /// control_plug.php (PlugControlApi.getUserSensors).
   static Future<SensorUnitsResult> getUserSensors({
     required Object? userId,
     required Object? deviceId,
+    String endpoint = controlEndpoint,
   }) async {
     const String logTag = 'User Sensors';
     try {
@@ -232,7 +236,7 @@ class DeviceControlApi {
       logD("📤 $logTag Request: ${jsonEncode(body)}");
 
       final response = await http.post(
-        Uri.parse(controlEndpoint),
+        Uri.parse(endpoint),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',

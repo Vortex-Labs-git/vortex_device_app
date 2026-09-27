@@ -8,6 +8,7 @@ import '../../controllers/network_watcher.dart';
 import '../../models/device.dart';
 import '../../theme/glass_theme.dart';
 import '../device_detail/device_detail_screen.dart';
+import '../device_detail/plug_detail_screen.dart';
 import '../device_detail/sensor_detail_screen.dart';
 import 'widgets/connection_status_bar.dart';
 import 'widgets/device_card.dart';
@@ -102,6 +103,22 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _onDeviceTap(Device device) {
+    // Smart plugs are cloud-only for now: no direct (AP) screen, and the same
+    // screen for online and offline (it locks manual control when offline).
+    if (device.isPlug) {
+      if (device.status == DeviceStatus.espConnected) {
+        _showSnackBar('Direct control is not available for smart plugs yet');
+        return;
+      }
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => PlugDetailScreen(deviceData: device.raw),
+        ),
+      );
+      return;
+    }
+
     switch (device.status) {
       case DeviceStatus.espConnected:
         // Direct ESP32 mode (valve: manual control only; sensor: read-only).

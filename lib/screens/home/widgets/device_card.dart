@@ -17,6 +17,7 @@ import '../../../widgets/glass/glass.dart';
 // Avatar logic (driven by the device ID prefix):
 //   - VA*  → valve product image (assets/images/valve_v2.jpeg)
 //   - SU*  → sensor icon
+//   - SP*  → smart plug icon
 //   - else → neutral unknown-device icon
 //
 // All status logic (online / offline / esp_connected) lives in the parent;
@@ -51,6 +52,7 @@ class DeviceCard extends StatelessWidget {
     final String idPrefix = id.toUpperCase();
     final bool isValve = idPrefix.startsWith('VA'); // valve image
     final bool isSensor = idPrefix.startsWith('SU'); // sensor icon
+    final bool isPlug = idPrefix.startsWith('SP'); // plug icon
 
     // The ring around the device image tells the same story as the pill and the
     // status edge, so it must not stay a friendly teal on an offline device:
@@ -109,7 +111,11 @@ class DeviceCard extends StatelessWidget {
                         )
                       : Center(
                           child: Icon(
-                            isSensor ? Icons.sensors : Icons.device_unknown,
+                            isSensor
+                                ? Icons.sensors
+                                : isPlug
+                                    ? Icons.power
+                                    : Icons.device_unknown,
                             size: 34,
                             color: accent,
                           ),

@@ -21,6 +21,12 @@ class ModeToggleCard extends StatelessWidget {
   final ValueChanged<bool> onScheduleChanged;
   final ValueChanged<bool> onSensorChanged;
 
+  /// Wording. Defaults are the valve's; the smart plug passes its own
+  /// ('base', 'You switch the base ON / OFF', 'Turn ON / OFF at set times').
+  final String subject;
+  final String manualSummary;
+  final String scheduleDescription;
+
   const ModeToggleCard({
     super.key,
     required this.isAutomateMode,
@@ -30,6 +36,9 @@ class ModeToggleCard extends StatelessWidget {
     required this.onAutomateChanged,
     required this.onScheduleChanged,
     required this.onSensorChanged,
+    this.subject = 'valve',
+    this.manualSummary = 'You control the valve position',
+    this.scheduleDescription = 'Open and close at set times',
   });
 
   static const Color _manualColor = GlassTokens.primary;
@@ -38,12 +47,12 @@ class ModeToggleCard extends StatelessWidget {
 
   /// One-line description of the mode the current switches add up to.
   String get _modeSummary {
-    if (!isAutomateMode) return 'You control the valve position';
+    if (!isAutomateMode) return manualSummary;
     if (isScheduleMode && isSensorMode) {
       return 'Schedule + Sensor — schedule with sensor override';
     }
-    if (isScheduleMode) return 'Schedule — valve follows the schedule';
-    if (isSensorMode) return 'Sensor — valve follows sensor readings';
+    if (isScheduleMode) return 'Schedule — $subject follows the schedule';
+    if (isSensorMode) return 'Sensor — $subject follows sensor readings';
     return 'Pick Schedule, Sensor, or both';
   }
 
@@ -148,7 +157,7 @@ class ModeToggleCard extends StatelessWidget {
                           icon: Icons.calendar_month,
                           color: _scheduleColor,
                           label: 'Schedule',
-                          description: 'Open and close at set times',
+                          description: scheduleDescription,
                           value: isScheduleMode,
                           onChanged: onScheduleChanged,
                         ),

@@ -8,6 +8,7 @@
 //   SensorUnit  → sensor detail payload    (models/sensor_unit.dart)
 //   valve map   → valve detail payload     (device_detail_screen works on the
 //                                           raw map; typed model may come later)
+//   SmartPlug   → plug detail payload      (models/smart_plug.dart)
 //
 // SOURCES — all three produce the same map shape:
 //   1. Cloud push    'device_list' via Ratchet server (WebSocketService)
@@ -50,7 +51,8 @@ enum DeviceStatus {
 }
 
 class Device {
-  /// "VA202601001" (WiFi valve) / "SU202601003" (sensor unit)
+  /// "VA202601001" (WiFi valve) / "SU202601003" (sensor unit) /
+  /// "SP202601001" (smart plug)
   final String id;
 
   /// Display name after the fallback chain (see header).
@@ -130,6 +132,7 @@ class Device {
   /// Device category by ID prefix — same rule DeviceCard and _onDeviceTap use.
   bool get isSensor => id.toUpperCase().startsWith('SU');
   bool get isValve => id.toUpperCase().startsWith('VA');
+  bool get isPlug => id.toUpperCase().startsWith('SP');
 
   /// Derived status. Recomputed on every read so a device naturally falls to
   /// offline once last_seen ages past the window (evaluated at build time,

@@ -48,14 +48,15 @@ class PlugControlApi {
     );
   }
 
-  /// Manual ON/OFF of one base.
+  /// Manual ON/OFF of one base. Writes usr_state; the plug then switches and
+  /// reports the new `state` (which PlugConfirmationController waits for).
   static Future<DeviceApiResult> setBaseState({
     required SmartPlug plug,
     required PlugBaseId base,
     required bool on,
   }) {
     return setPlugBasic(
-      plug.withBase(plug.base(base).copyWith(state: on)),
+      plug.withBase(plug.base(base).copyWith(usrState: on)),
     );
   }
 

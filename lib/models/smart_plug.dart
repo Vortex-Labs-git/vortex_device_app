@@ -24,8 +24,13 @@ import 'valve_device.dart' show SensorReading;
 //   {"event":"device_basic_detail", "device_id":"SP202601003",
 //    "data":{"id":"SP202601003", "plug_name":"plug_1", "plug_version":"v_1.0",
 //            "plug_last_seen":"",
-//            "base_A":{"name":"base 1","state":false,"sch_ctrl":false,"sen_ctrl":false},
-//            "base_B":{"name":"base 2","state":false,"sch_ctrl":false,"sen_ctrl":false},
+//            "base_A":{"name":"base 1","state":false,"usr_state":false,
+//                      "sch_ctrl":false,"sen_ctrl":false},
+//            "base_B":{"name":"base 2","state":false,"usr_state":false,
+//                      "sch_ctrl":false,"sen_ctrl":false},
+//
+//   state      = what the PLUG reports (shown in the UI)
+//   usr_state  = the user's COMMAND (written by set_plug_basic, read by the plug)
 //            "wattage":{"base_A":0,"base_B":0}}}
 //
 //   {"event":"device_schedule", "device_id":"SP202601003",
@@ -90,8 +95,15 @@ class PlugBase {
   /// User-given socket name. '' means this base does not exist (single plug).
   final String name;
 
-  /// true = ON.
+  /// true = ON. What the PLUG reports it is doing right now.
   final bool state;
+
+  /// usr_state — what the USER last asked for in manual mode. Can differ from
+  /// [state] for a moment after a command, until the plug catches up. This is
+  /// the field set_plug_basic writes, so the untouched base is resent with
+  /// its own usrState (NOT its reported state — that could cancel a command
+  /// the plug hasn't carried out yet).
+  final bool usrState;
 
   /// sch_ctrl — base follows its schedule.
   final bool scheduleCtrl;
@@ -106,15 +118,17 @@ class PlugBase {
     required this.id,
     required this.name,
     required this.state,
+    bool? usrState,
     required this.scheduleCtrl,
     required this.sensorCtrl,
     this.wattage = 0,
-  });
+  }) : usrState = usrState ?? state;
 
   /// An empty placeholder — used when the block is missing entirely.
   const PlugBase.absent(this.id)
       : name = '',
         state = false,
+        usrState = false,
         scheduleCtrl = false,
         sensorCtrl = false,
         wattage = 0;
@@ -129,6 +143,10 @@ class PlugBase {
       id: id,
       name: _clean(json['name']),
       state: _readFlag(json['state']),
+      // Older pushes without usr_state fall back to the reported state.
+      usrState: json.containsKey('usr_state')
+          ? _readFlag(json['usr_state'])
+          : null,
       scheduleCtrl: _readFlag(json['sch_ctrl']),
       sensorCtrl: _readFlag(json['sen_ctrl']),
       wattage: double.tryParse(_clean(wattage)) ?? 0,
@@ -159,7 +177,10 @@ class PlugBase {
 
   /// This base's block inside set_plug_basic:
   ///   {"set_controller":{"schedule":true,"sensor":false},
-  ///    "set_data":{"name":"plug_1","state":true}}
+  ///    "set_data":{"name":"plug_1","usr_state":true}}
+  ///
+  /// control_plug.php writes `usr_state` (only while schedule and sensor are
+  /// both off); it ignores a `state` key, so don't send one.
   Map<String, dynamic> toBasicJson() => {
         'set_controller': {
           'schedule': scheduleCtrl,
@@ -167,13 +188,14 @@ class PlugBase {
         },
         'set_data': {
           'name': name,
-          'state': state,
+          'usr_state': usrState,
         },
       };
 
   PlugBase copyWith({
     String? name,
     bool? state,
+    bool? usrState,
     bool? scheduleCtrl,
     bool? sensorCtrl,
     double? wattage,
@@ -182,6 +204,7 @@ class PlugBase {
         id: id,
         name: name ?? this.name,
         state: state ?? this.state,
+        usrState: usrState ?? this.usrState,
         scheduleCtrl: scheduleCtrl ?? this.scheduleCtrl,
         sensorCtrl: sensorCtrl ?? this.sensorCtrl,
         wattage: wattage ?? this.wattage,
@@ -269,11 +292,16 @@ class SmartPlug {
   /// The whole set_plug_basic body minus event/timestamp (the API layer adds
   /// those). The server expects BOTH bases every time, so the untouched one
   /// is resent with its current values. A single plug sends base_A only.
+  ///
+  /// Only VALID bases go out: the server would write a blank name straight
+  /// into base_X_name, and '' is what marks a base as missing. (Before the
+  /// first device_basic_detail push base_A is still the empty placeholder,
+  /// so this also keeps an early rename from blanking it.)
   Map<String, dynamic> toBasicJson() => {
         'device_id': id,
         'plug_name': name,
-        PlugBaseId.a.key: baseA.toBasicJson(),
-        if (isDual) PlugBaseId.b.key: baseB.toBasicJson(),
+        if (baseA.isValid) PlugBaseId.a.key: baseA.toBasicJson(),
+        if (baseB.isValid) PlugBaseId.b.key: baseB.toBasicJson(),
       };
 
   SmartPlug copyWith({

@@ -10,6 +10,13 @@ import '../../../widgets/glass/glass.dart';
 // Manual control of the selected base: the current state on top, the live
 // wattage, and one round ON/OFF button.
 //
+// TWO FIELDS, ONE TRUTH:
+//   base.usrState  usr_state — the COMMAND. The app writes it; the plug reads it.
+//   base.state     state     — what the PLUG REPORTS it actually did.
+// Everything shown as "current state" is [PlugBase.state], so the user only
+// ever sees ON once the plug itself says ON. A command the plug hasn't carried
+// out yet (usrState != state) is shown as a separate warning line.
+//
 // The plug's version of ValveControlCard. After a tap the parent waits for the
 // plug to report the new state; while it waits ([waitingForConfirmation]) the
 // button is locked and shows the countdown.
@@ -48,8 +55,16 @@ class PlugManualCard extends StatelessWidget {
     // The button offers the opposite of the current state.
     final Color buttonColor = on ? GlassTokens.danger : GlassTokens.success;
 
+    // A command is stored but the plug hasn't carried it out, and we're not
+    // counting down for it any more (timed out, or the screen was reopened).
+    final bool commandNotApplied =
+        !busy && base.usrState != base.state;
+
     final String hint;
-    if (waitingForConfirmation) {
+    if (commandNotApplied) {
+      hint = 'Requested ${base.usrState ? 'ON' : 'OFF'} — '
+          '${base.name} has not switched yet';
+    } else if (waitingForConfirmation) {
       hint = 'Waiting for ${base.name} to turn '
           '${pendingState == true ? 'ON' : 'OFF'} … ${confirmationCountdown}s';
     } else if (isUpdating) {
@@ -149,7 +164,14 @@ class PlugManualCard extends StatelessWidget {
           Text(
             hint,
             textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 12, color: GlassTokens.textMuted),
+            style: TextStyle(
+              fontSize: 12,
+              color: commandNotApplied
+                  ? GlassTokens.warning
+                  : GlassTokens.textMuted,
+              fontWeight:
+                  commandNotApplied ? FontWeight.w600 : FontWeight.normal,
+            ),
           ),
         ],
       ),

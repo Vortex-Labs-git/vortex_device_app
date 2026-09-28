@@ -294,6 +294,14 @@ class _PlugDetailScreenState extends State<PlugDetailScreen> {
   // ===========================================================================
 
   Future<void> _editPlugName() async {
+    // set_plug_basic resends every base; until the first push we don't know
+    // them yet (see SmartPlug.toBasicJson).
+    if (!_hasDetail) {
+      _showMessage('Loading plug details — try again in a moment',
+          duration: const Duration(seconds: 2));
+      return;
+    }
+
     final newName = await showEditDeviceNameDialog(
       context,
       currentName: _plug.name,

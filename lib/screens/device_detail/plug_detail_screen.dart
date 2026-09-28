@@ -12,6 +12,7 @@ import 'controllers/plug_feed.dart';
 
 // Dialogs
 import 'dialogs/edit_device_name_dialog.dart';
+import 'dialogs/plug_schedule_dialogs.dart';
 
 // Pure helpers
 import 'utils/valve_utils.dart' show isDeviceOnline;
@@ -24,6 +25,7 @@ import 'widgets/mode_toggle_card.dart';
 import 'widgets/plug_base_header_card.dart';
 import 'widgets/plug_base_selector.dart';
 import 'widgets/plug_manual_card.dart';
+import 'widgets/plug_schedule_card.dart';
 
 // =============================================================================
 // PLUG DETAIL SCREEN
@@ -37,7 +39,8 @@ import 'widgets/plug_manual_card.dart';
 //   4  ModeToggleCard        Manual / Automate → Schedule, Sensor (per base)
 //   5  ControlModeCard       Control by: manual / schedule / sensor (manual only)
 //   6  PlugManualCard        current state + ON/OFF button
-//      schedule / sensor     placeholders — next step
+//      PlugScheduleCard      schedule table of the base (+ step cycle)
+//      sensor                placeholder — next step
 //
 // Everything from 3 down belongs to the SELECTED base. Each base keeps its own
 // UI state (automate switch, control-by choice, pending command).
@@ -65,12 +68,24 @@ class _PlugDetailScreenState extends State<PlugDetailScreen> {
   late SmartPlug _plug;
   bool _hasDetail = false; // false until the first device_basic_detail push
 
-  /// Per-base schedule + sensor setup from device_schedule. Parsed and kept
-  /// now so the schedule / sensor cards (next step) have it ready.
+  /// Per-base schedule + sensor setup exactly as the server last pushed it
+  /// (device_schedule).
   final Map<PlugBaseId, PlugBaseControl> _controls = {
     PlugBaseId.a: const PlugBaseControl.empty(PlugBaseId.a),
     PlugBaseId.b: const PlugBaseControl.empty(PlugBaseId.b),
   };
+
+  // -- Schedule tables (per base) --
+  /// What the schedule card shows and edits. Follows the server's copy until
+  /// the user edits a base; from then on that base's table is left alone by
+  /// the 2-second pushes until it is saved (same idea as the valve's
+  /// _schedulesLocallyEdited, but per base).
+  final Map<PlugBaseId, List<PlugScheduleEntry>> _schedules = {
+    PlugBaseId.a: [],
+    PlugBaseId.b: [],
+  };
+  final Set<PlugBaseId> _schedulesEdited = {};
+  final Set<PlugBaseId> _savingSchedule = {};
 
   // -- Connection state --
   bool _wsConnected = false;
@@ -178,7 +193,13 @@ class _PlugDetailScreenState extends State<PlugDetailScreen> {
     setState(() {
       for (final id in PlugBaseId.values) {
         final c = control.base(id);
-        if (c != null) _controls[id] = c;
+        if (c == null) continue;
+        _controls[id] = c;
+
+        // Don't overwrite a table the user is editing.
+        if (!_schedulesEdited.contains(id)) {
+          _schedules[id] = List.of(c.schedules);
+        }
       }
     });
   }
@@ -287,6 +308,70 @@ class _PlugDetailScreenState extends State<PlugDetailScreen> {
     }
 
     setState(() => _updatingState.remove(id));
+  }
+
+  // ===========================================================================
+  // SECTION 5b: SCHEDULE (add / edit / delete / save, per base)
+  // ===========================================================================
+
+  Future<void> _showScheduleDialog({int? editIndex}) async {
+    final id = _selected;
+    final list = _schedules[id]!;
+
+    final entry = await showPlugScheduleEntryDialog(
+      context,
+      baseName: _plug.base(id).name,
+      initial: editIndex != null ? list[editIndex] : null,
+    );
+    if (entry == null || !mounted) return;
+
+    setState(() {
+      _schedulesEdited.add(id);
+      if (editIndex != null) {
+        list[editIndex] = entry;
+      } else {
+        list.add(entry);
+      }
+    });
+  }
+
+  Future<void> _deleteSchedule(int index) async {
+    final id = _selected;
+    final list = _schedules[id]!;
+
+    final confirmed = await showDeletePlugScheduleDialog(context, list[index]);
+    if (!confirmed || !mounted) return;
+
+    setState(() {
+      _schedulesEdited.add(id);
+      list.removeAt(index);
+    });
+  }
+
+  Future<void> _saveSchedule() async {
+    final id = _selected;
+    setState(() => _savingSchedule.add(id));
+
+    final result = await PlugControlApi.saveBaseSchedule(
+      plug: _plug,
+      base: id,
+      schedules: List.of(_schedules[id]!),
+    );
+
+    if (!mounted) return;
+
+    if (result.success) {
+      // Saved — the server's copy is authoritative again for this base.
+      setState(() => _schedulesEdited.remove(id));
+      _showMessage(
+        '${_plug.base(id).name}: schedule saved',
+        color: GlassTokens.success,
+      );
+    } else {
+      _showMessage(result.displayMessage, color: GlassTokens.danger);
+    }
+
+    setState(() => _savingSchedule.remove(id));
   }
 
   // ===========================================================================
@@ -494,9 +579,15 @@ class _PlugDetailScreenState extends State<PlugDetailScreen> {
           onToggle: _switchBase,
         )
       else if (activeCard == 'schedule')
-        _placeholder(
-          'Schedule for ${base.name}',
-          '${_controls[id]?.schedules.length ?? 0} entries · editor coming next',
+        PlugScheduleCard(
+          baseName: base.name,
+          schedules: _schedules[id]!,
+          isSaving: _savingSchedule.contains(id),
+          hasUnsavedChanges: _schedulesEdited.contains(id),
+          onAddPressed: _showScheduleDialog,
+          onRowTapped: (i) => _showScheduleDialog(editIndex: i),
+          onRowDeleted: _deleteSchedule,
+          onSavePressed: _saveSchedule,
         )
       else
         _placeholder(
@@ -508,7 +599,7 @@ class _PlugDetailScreenState extends State<PlugDetailScreen> {
     ];
   }
 
-  // TODO(plug): replace with PlugScheduleCard / PlugSensorCard.
+  // TODO(plug): replace with PlugSensorCard.
   Widget _placeholder(String title, String subtitle) {
     return GlassCard(
       padding: const EdgeInsets.all(20),

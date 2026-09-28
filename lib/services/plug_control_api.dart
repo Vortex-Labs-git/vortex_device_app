@@ -123,6 +123,29 @@ class PlugControlApi {
     );
   }
 
+  /// Replaces the schedule of ONE base. control_plug.php only replaces the
+  /// bases it receives ("the other base keeps its schedule"), so this sends
+  /// [base] alone — unsaved edits on the other base are NOT sent with it.
+  /// An empty [schedules] list clears that base's schedule.
+  static Future<DeviceApiResult> saveBaseSchedule({
+    required SmartPlug plug,
+    required PlugBaseId base,
+    required List<PlugScheduleEntry> schedules,
+  }) {
+    return _post(
+      logTag: 'Plug Schedule ${base.letter}',
+      body: {
+        'event': 'set_plug_schedule',
+        'timestamp': _now(),
+        'device_id': plug.id,
+        'set_sheduledata': {   // (sic) — the server's key spelling
+          base.key: PlugBaseControl(id: base, schedules: schedules)
+              .toScheduleJson(),
+        },
+      },
+    );
+  }
+
   // ---------------------------------------------------------------------------
   // set_plug_sensor
   // ---------------------------------------------------------------------------

@@ -34,9 +34,9 @@ import 'valve_device.dart' show SensorReading;
 //            "wattage":{"base_A":0,"base_B":0}}}
 //
 //   {"event":"device_schedule", "device_id":"SP202601003",
-//    "base_A":{"schedule":{"schedule_info":"[{\"day\":\"Monday\",
-//                                             \"08:00-08:20\":\"1\",
-//                                             \"step\":\"600:0\"}]"},
+//    "base_A":{"schedule":{"schedule_info":[{"day":"Monday",
+//                                            "08:00:00":"08:20:00",
+//                                            "step":"1200:0"}]},
 //              "Sensor":{"sensor_rule":{"0-30":"1"}, "sensor_data":{...}}},
 //    "base_B":{...}}
 //
@@ -329,23 +329,28 @@ class SmartPlug {
 // =============================================================================
 // PLUG SCHEDULE ENTRY
 // =============================================================================
-// One schedule row: a day, a time range, ON/OFF, and the advanced "step".
+// One schedule row: a day, a time range, and the advanced "step".
 //
-//   {"day":"Monday", "08:00-08:10":"1", "step":"60:60"}
+//   {"day":"Every day", "08:00:00":"08:20:00", "step":"1200:0"}
+//
+// The KEY is the start time and its VALUE the end time, both "HH:mm:ss".
+// There is no ON/OFF value: outside every range the base is OFF, and inside
+// a range it is ON — following the step.
 //
 // STEP = "<on seconds>:<off seconds>", cycled inside the time range:
-//   600 s range, "60:60"  → ON 60 s, OFF 60 s, ON 60 s, … until 08:10
-//   600 s range, "600:0"  → ON for the whole range (the DEFAULT)
+//   30 s range, "20:0"   → ON the whole range (default = "<range>:0")
+//   30 s range, "5:5"    → ON 5 s, OFF 5 s, ON 5 s, … until the range ends
 // off = 0 means "continuous" — the base just stays ON for the whole range.
+//
+// Stored per base in the DB as:
+//   {"base_A":[{"day":"Every day","08:00:00":"08:20:00","step":"1200:0"}],
+//    "base_B":[{"day":"Monday","08:00:00":"08:00:30","step":"20:0"}, …]}
 // =============================================================================
 
 class PlugScheduleEntry {
   final String day;    // "Every day" | "Monday" | ...
-  final String start;  // "08:00"
-  final String end;    // "08:10"
-
-  /// ON/OFF for the range. Wire "1" / "0".
-  final bool state;
+  final String start;  // "08:00:00"
+  final String end;    // "08:20:00"
 
   /// Step cycle, in seconds. [offSeconds] == 0 means continuous.
   final int onSeconds;
@@ -355,7 +360,6 @@ class PlugScheduleEntry {
     required this.day,
     required this.start,
     required this.end,
-    this.state = true,
     required this.onSeconds,
     this.offSeconds = 0,
   });
@@ -365,21 +369,19 @@ class PlugScheduleEntry {
     required String day,
     required String start,
     required String end,
-    bool state = true,
   }) =>
       PlugScheduleEntry(
         day: day,
         start: start,
         end: end,
-        state: state,
         onSeconds: durationSecondsOf(start, end),
         offSeconds: 0,
       );
 
-  /// "08:00-08:10" — the wire format's key.
-  String get timeRange => '$start-$end';
+  /// "08:00:00 – 08:20:00" — for display.
+  String get timeRange => '$start – $end';
 
-  /// "600:0" — the wire format's step value.
+  /// "1200:0" — the wire format's step value.
   String get step => '$onSeconds:$offSeconds';
 
   /// No OFF phase → ON for the whole range (the default / non-advanced case).
@@ -388,44 +390,69 @@ class PlugScheduleEntry {
   /// Range length in seconds.
   int get durationSeconds => durationSecondsOf(start, end);
 
-  /// Range length for "HH:mm"–"HH:mm". An end at or before the start wraps
-  /// past midnight (22:00-02:00 → 4 h).
+  // ---------------------------------------------------------------------------
+  // Time helpers
+  // ---------------------------------------------------------------------------
+
+  /// Range length for two "HH:mm:ss" (or "HH:mm") times. An end at or before
+  /// the start wraps past midnight (22:00:00 → 02:00:00 = 4 h).
   static int durationSecondsOf(String start, String end) {
-    final s = _minutes(start);
-    final e = _minutes(end);
+    final s = secondsOfDay(start);
+    final e = secondsOfDay(end);
     if (s == null || e == null) return 0;
-    final diff = e > s ? e - s : e + 24 * 60 - s;
-    return diff * 60;
+    return e > s ? e - s : e + 24 * 3600 - s;
   }
 
-  static int? _minutes(String hhmm) {
-    final parts = hhmm.trim().split(':');
-    if (parts.length != 2) return null;
+  /// "08:00:30" → 28830. Also takes "8:00" (seconds = 0). null if unreadable.
+  static int? secondsOfDay(String time) {
+    final parts = time.trim().split(':');
+    if (parts.length < 2 || parts.length > 3) return null;
     final h = int.tryParse(parts[0]);
     final m = int.tryParse(parts[1]);
-    if (h == null || m == null) return null;
-    return h * 60 + m;
+    final s = parts.length == 3 ? int.tryParse(parts[2]) : 0;
+    if (h == null || m == null || s == null) return null;
+    if (h > 23 || m > 59 || s > 59) return null;
+    return h * 3600 + m * 60 + s;
   }
 
-  static final RegExp _timeRangeKey =
-      RegExp(r'^\s*(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})\s*$');
+  /// 28830 → "08:00:30".
+  static String formatSecondsOfDay(int seconds) {
+    final t = seconds % (24 * 3600);
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${two(t ~/ 3600)}:${two((t % 3600) ~/ 60)}:${two(t % 60)}';
+  }
+
+  /// Any accepted time → canonical "HH:mm:ss" ("8:00" → "08:00:00").
+  static String? normalizeTime(String time) {
+    final s = secondsOfDay(time);
+    return s == null ? null : formatSecondsOfDay(s);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Wire
+  // ---------------------------------------------------------------------------
+
+  static final RegExp _timeKey = RegExp(r'^\s*\d{1,2}:\d{2}(:\d{2})?\s*$');
+
+  /// Old draft format, "08:00-08:20": "1" — still read so early test rows
+  /// don't vanish from the table.
+  static final RegExp _legacyRangeKey =
+      RegExp(r'^\s*(\d{1,2}:\d{2}(?::\d{2})?)\s*-\s*(\d{1,2}:\d{2}(?::\d{2})?)\s*$');
 
   static final RegExp _stepValue = RegExp(r'^\s*(\d+)\s*:\s*(\d+)\s*$');
 
-  /// Wire → model. One object may hold several time-range keys; they all
-  /// share the object's `day` and `step`. A missing / bad step falls back to
-  /// the default (continuous for that range).
+  /// Wire → model. One object normally holds ONE start→end pair; if it holds
+  /// more they all share the object's `day` and `step`. A missing / bad step
+  /// falls back to the default (continuous for that range).
   static List<PlugScheduleEntry> listFromJson(Map<String, dynamic> json) {
     final day = _clean(json['day']);
     final stepMatch = _stepValue.firstMatch(_clean(json['step']));
     final entries = <PlugScheduleEntry>[];
 
-    json.forEach((key, value) {
-      final match = _timeRangeKey.firstMatch(key);
-      if (match == null) return; // 'day', 'step', anything unrecognised
-
-      final start = match.group(1)!;
-      final end = match.group(2)!;
+    void add(String rawStart, String rawEnd) {
+      final start = normalizeTime(rawStart);
+      final end = normalizeTime(rawEnd);
+      if (start == null || end == null) return;
 
       int on = durationSecondsOf(start, end);
       int off = 0;
@@ -438,19 +465,30 @@ class PlugScheduleEntry {
         day: day,
         start: start,
         end: end,
-        state: _readOnOff(value),
         onSeconds: on,
         offSeconds: off,
       ));
+    }
+
+    json.forEach((key, value) {
+      if (key == 'day' || key == 'step') return;
+
+      if (_timeKey.hasMatch(key)) {
+        add(key, _clean(value)); // "08:00:00": "08:20:00"
+        return;
+      }
+
+      final legacy = _legacyRangeKey.firstMatch(key);
+      if (legacy != null) add(legacy.group(1)!, legacy.group(2)!);
     });
 
     return entries;
   }
 
-  /// Model → wire.
+  /// Model → wire: {"day":"Monday","08:00:00":"08:00:30","step":"20:0"}
   Map<String, dynamic> toJson() => {
         'day': day,
-        timeRange: _writeOnOff(state),
+        start: end,
         'step': step,
       };
 
@@ -460,7 +498,6 @@ class PlugScheduleEntry {
     String? day,
     String? start,
     String? end,
-    bool? state,
     int? onSeconds,
     int? offSeconds,
   }) {
@@ -473,7 +510,6 @@ class PlugScheduleEntry {
       day: day ?? this.day,
       start: newStart,
       end: newEnd,
-      state: state ?? this.state,
       onSeconds: (isContinuous && rangeChanged && !stepGiven)
           ? durationSecondsOf(newStart, newEnd)
           : (onSeconds ?? this.onSeconds),
@@ -481,8 +517,8 @@ class PlugScheduleEntry {
     );
   }
 
-  /// Whole list → the `schedule_info` STRING the server expects (a JSON
-  /// array encoded as text, like the valve's).
+  /// Whole list → the `schedule_info` STRING sent in set_plug_schedule (a
+  /// JSON array as text; control_plug.php decodes it and stores the array).
   static String encodeList(List<PlugScheduleEntry> entries) =>
       jsonEncode(entries.map((e) => e.toJson()).toList());
 

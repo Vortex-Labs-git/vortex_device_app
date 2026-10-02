@@ -14,11 +14,13 @@ import '../../../widgets/glass/glass.dart';
 // online / offline reads at a glance from the card itself rather than only
 // from the label.
 //
-// Avatar logic (driven by the device ID prefix):
-//   - VA*  → valve product image (assets/images/valve_v2.jpeg)
-//   - SU*  → sensor icon
-//   - SP*  → smart plug icon
+// Avatar logic (driven by the device ID prefix, see [_productImages]):
+//   - VA*  → valve product image       (assets/images/valve_v2.jpeg)
+//   - SU*  → sensor unit product image (assets/images/SU_1.jpeg)
+//   - SP*  → smart plug product image  (assets/images/SP_1.jpeg)
 //   - else → neutral unknown-device icon
+// If an image file is missing or fails to load, the card falls back to that
+// device type's icon instead of showing an error box.
 //
 // All status logic (online / offline / esp_connected) lives in the parent;
 // this widget just receives the resolved [statusText] / [statusColor] values
@@ -41,6 +43,23 @@ class DeviceCard extends StatelessWidget {
     required this.onTap,
   });
 
+  /// Product photo per ID prefix. Files live in assets/images/ (the whole
+  /// folder is already registered in pubspec.yaml). Change a file name or
+  /// extension here only.
+  static const Map<String, String> _productImages = {
+    'VA': 'assets/images/VA_3.jpeg',
+    'SU': 'assets/images/SU_1.jpeg',
+    'SP': 'assets/images/SP_1.jpeg',
+  };
+
+  /// Fallback icon per ID prefix — used when there is no image, or the
+  /// image fails to load.
+  static const Map<String, IconData> _fallbackIcons = {
+    'VA': Icons.water_drop,
+    'SU': Icons.sensors,
+    'SP': Icons.power,
+  };
+
   @override
   Widget build(BuildContext context) {
     final String name =
@@ -50,9 +69,9 @@ class DeviceCard extends StatelessWidget {
         'Unknown Device';
     final String id = device['id']?.toString() ?? '';
     final String idPrefix = id.toUpperCase();
-    final bool isValve = idPrefix.startsWith('VA'); // valve image
-    final bool isSensor = idPrefix.startsWith('SU'); // sensor icon
-    final bool isPlug = idPrefix.startsWith('SP'); // plug icon
+    final String typePrefix =
+        idPrefix.length >= 2 ? idPrefix.substring(0, 2) : idPrefix;
+    final String? imagePath = _productImages[typePrefix];
 
     // The ring around the device image tells the same story as the pill and the
     // status edge, so it must not stay a friendly teal on an offline device:
@@ -78,8 +97,8 @@ class DeviceCard extends StatelessWidget {
             child: Row(
               children: [
                 // ───────────────────────────────────────────────────────
-                // Avatar: valve image for VA-*, sensor icon for SU-*,
-                // neutral icon otherwise
+                // Avatar: product image for VA-* / SU-* / SP-*, icon
+                // otherwise (or if the image can't load)
                 // ───────────────────────────────────────────────────────
                 Container(
                   width: 68,
@@ -100,26 +119,18 @@ class DeviceCard extends StatelessWidget {
                       ),
                     ],
                   ),
-                  child: isValve
+                  child: imagePath != null
                       ? ClipOval(
                           child: Image.asset(
-                            'assets/images/valve_v2.jpeg',
+                            imagePath,
                             width: 68,
                             height: 68,
                             fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) =>
+                                _fallbackIcon(typePrefix, accent),
                           ),
                         )
-                      : Center(
-                          child: Icon(
-                            isSensor
-                                ? Icons.sensors
-                                : isPlug
-                                    ? Icons.power
-                                    : Icons.device_unknown,
-                            size: 34,
-                            color: accent,
-                          ),
-                        ),
+                      : _fallbackIcon(typePrefix, accent),
                 ),
 
                 // ───────────────────────────────────────────────────────
@@ -245,6 +256,17 @@ class DeviceCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// The device-type icon, centred in the avatar circle.
+  Widget _fallbackIcon(String typePrefix, Color color) {
+    return Center(
+      child: Icon(
+        _fallbackIcons[typePrefix] ?? Icons.device_unknown,
+        size: 34,
+        color: color,
       ),
     );
   }

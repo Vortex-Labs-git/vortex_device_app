@@ -18,6 +18,9 @@
 //   GlassGhostButton  pressable glass pane, secondary action
 //   GlassFab          circular gradient action button
 //   GlassDialog       glass dialog + showGlassDialog()
+//   ForestHeader      forest brand band + ForestStat summary tiles (UI v2)
+//   StatusTag         Online / Offline / Direct / type pills (UI v2)
+//   SegmentedPicker   one-of-N switch, e.g. Manual | Schedule | Sensor (UI v2)
 //
 // Design tokens live in theme/glass_theme.dart.
 // =============================================================================
@@ -29,3 +32,6 @@ export 'glass_button.dart';
 export 'glass_dialog.dart';
 export 'glass_scaffold.dart';
 export 'glass_surface.dart';
+export 'forest_header.dart';
+export 'segmented_picker.dart';
+export 'status_tag.dart';

@@ -6,16 +6,16 @@ import '../../../widgets/glass/glass.dart';
 // =============================================================================
 // DEVICE CARD
 // =============================================================================
-// One device row in the home device list. Shows avatar, name, ID,
-// status dot + label, and a colored side bar. The whole card is tappable —
-// the parent decides what to do based on device status.
+// One device row in the home device list (UI v2): product photo tile with a
+// status dot, name, "ID · last seen", a status tag and a device-type tag, and
+// a chevron. The whole card is tappable — the parent decides what to do based
+// on device status.
 //
-// The pane is tinted by status, and so is the ring around the device image, so
-// online / offline reads at a glance from the card itself rather than only
-// from the label.
+// Offline devices fade their photo to grey, so a stale device reads as stale
+// before any text is read.
 //
 // Avatar logic (driven by the device ID prefix, see [_productImages]):
-//   - VA*  → valve product image       (assets/images/valve_v2.jpeg)
+//   - VA*  → valve product image       (assets/images/VA_3.jpeg)
 //   - SU*  → sensor unit product image (assets/images/SU_1.jpeg)
 //   - SP*  → smart plug product image  (assets/images/SP_1.jpeg)
 //   - else → neutral unknown-device icon
@@ -23,16 +23,23 @@ import '../../../widgets/glass/glass.dart';
 // device type's icon instead of showing an error box.
 //
 // All status logic (online / offline / esp_connected) lives in the parent;
-// this widget just receives the resolved [statusText] / [statusColor] values
-// and the direct-connection flag that distinguishes a local AP link.
+// this widget just receives the resolved [statusText] / [statusColor] values,
+// the direct-connection flag, and (optionally) the offline flag and the
+// "last seen" line.
 // =============================================================================
 
 class DeviceCard extends StatelessWidget {
   final Map<String, dynamic> device;
   final String statusText; // "Online" | "Offline" | "Direct Connected"
   final Color statusColor; // Green or red
-  final bool isEspConnected; // Direct AP link — rings the avatar in brand teal
+  final bool isEspConnected; // Direct AP link — gold tag and dot
   final VoidCallback onTap;
+
+  /// Greys out the product photo. Defaults to false.
+  final bool isOffline;
+
+  /// Line after the ID, e.g. "Updated 3 s ago". Omitted when null.
+  final String? subtitle;
 
   const DeviceCard({
     super.key,
@@ -41,6 +48,8 @@ class DeviceCard extends StatelessWidget {
     required this.statusColor,
     required this.isEspConnected,
     required this.onTap,
+    this.isOffline = false,
+    this.subtitle,
   });
 
   /// Product photo per ID prefix. Files live in assets/images/ (the whole
@@ -52,13 +61,20 @@ class DeviceCard extends StatelessWidget {
     'SP': 'assets/images/SP_1.jpeg',
   };
 
-  /// Fallback icon per ID prefix — used when there is no image, or the
-  /// image fails to load.
-  static const Map<String, IconData> _fallbackIcons = {
-    'VA': Icons.water_drop,
-    'SU': Icons.sensors,
-    'SP': Icons.power,
+  /// Type tag per ID prefix: label, icon and category colour.
+  static const Map<String, (String, IconData, Color)> _types = {
+    'VA': ('Valve', Icons.water_drop_outlined, GlassTokens.water),
+    'SU': ('Sensor unit', Icons.sensors, GlassTokens.info),
+    'SP': ('Smart plug', Icons.power_outlined, GlassTokens.sun),
   };
+
+  /// Desaturates the photo of an offline device.
+  static const ColorFilter _greyscale = ColorFilter.matrix(<double>[
+    0.2126, 0.7152, 0.0722, 0, 0, //
+    0.2126, 0.7152, 0.0722, 0, 0, //
+    0.2126, 0.7152, 0.0722, 0, 0, //
+    0, 0, 0, 0.75, 0, //
+  ]);
 
   @override
   Widget build(BuildContext context) {
@@ -72,201 +88,132 @@ class DeviceCard extends StatelessWidget {
     final String typePrefix =
         idPrefix.length >= 2 ? idPrefix.substring(0, 2) : idPrefix;
     final String? imagePath = _productImages[typePrefix];
+    final (String, IconData, Color)? type = _types[typePrefix];
 
-    // The ring around the device image tells the same story as the pill and the
-    // status edge, so it must not stay a friendly teal on an offline device:
-    //   offline          → red, matching the rest of the card
-    //   direct connected → brand teal, because a local AP link is a different
-    //                      kind of "connected" (no cloud, manual control only)
-    //   online           → green
-    final Color accent = isEspConnected ? GlassTokens.primary : statusColor;
+    // Dot on the photo: gold for a direct AP link (a different kind of
+    // "connected" — no cloud, manual control only), else the status colour.
+    final Color dot = isEspConnected ? GlassTokens.gold : statusColor;
+
+    Widget photo = imagePath != null
+        ? Image.asset(
+            imagePath,
+            width: 58,
+            height: 58,
+            fit: BoxFit.cover,
+            errorBuilder: (_, _, _) => _fallbackIcon(type),
+          )
+        : _fallbackIcon(type);
+    if (isOffline) photo = ColorFiltered(colorFilter: _greyscale, child: photo);
 
     return GlassSurface(
-      margin: const EdgeInsets.only(bottom: 14),
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
       borderRadius: BorderRadius.circular(GlassTokens.radiusLg),
-      tint: statusColor,
-      tintStrength: 0.14,
       onTap: onTap,
-      // The status edge is a Stack layer rather than a stretched Row child so
-      // the row needs no IntrinsicHeight — that measures every row twice, on
-      // every list layout, for a 6px strip.
-      child: Stack(
+      child: Row(
         children: [
-          Padding(
-            padding: const EdgeInsets.only(right: 6),
-            child: Row(
+          // ─────────────────────────────────────────────────────────────
+          // Photo tile with the status dot on its corner
+          // ─────────────────────────────────────────────────────────────
+          SizedBox(
+            width: 62,
+            height: 62,
+            child: Stack(
+              clipBehavior: Clip.none,
               children: [
-                // ───────────────────────────────────────────────────────
-                // Avatar: product image for VA-* / SU-* / SP-*, icon
-                // otherwise (or if the image can't load)
-                // ───────────────────────────────────────────────────────
                 Container(
-                  width: 68,
-                  height: 68,
-                  margin: const EdgeInsets.all(14),
+                  width: 58,
+                  height: 58,
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.75),
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: accent.withValues(alpha: 0.55),
-                      width: 2,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: accent.withValues(alpha: 0.20),
-                        blurRadius: 14,
-                        offset: const Offset(0, 5),
-                      ),
-                    ],
+                    color: GlassTokens.sunk,
+                    borderRadius: BorderRadius.circular(GlassTokens.radiusMd),
                   ),
-                  child: imagePath != null
-                      ? ClipOval(
-                          child: Image.asset(
-                            imagePath,
-                            width: 68,
-                            height: 68,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) =>
-                                _fallbackIcon(typePrefix, accent),
-                          ),
-                        )
-                      : _fallbackIcon(typePrefix, accent),
+                  clipBehavior: Clip.antiAlias,
+                  child: photo,
                 ),
-
-                // ───────────────────────────────────────────────────────
-                // Name + ID + status row
-                // ───────────────────────────────────────────────────────
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Device name
-                        Text(
-                          name,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 16,
-                            color: GlassTokens.textPrimary,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-
-                        const SizedBox(height: 2),
-
-                        // Device ID
-                        Text(
-                          "ID: $id",
-                          style: const TextStyle(
-                            color: GlassTokens.textMuted,
-                            fontSize: 12,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-
-                        const SizedBox(height: 8),
-
-                        // Status pill (dot + label) — tinted glass capsule
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: GlassPill(
-                            tint: statusColor,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 5,
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: BoxDecoration(
-                                    color: statusColor,
-                                    shape: BoxShape.circle,
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: statusColor.withValues(
-                                          alpha: 0.55,
-                                        ),
-                                        blurRadius: 6,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  statusText,
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    color: Color.lerp(
-                                      statusColor,
-                                      Colors.black,
-                                      0.30,
-                                    ),
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
+                Positioned(
+                  right: 0,
+                  bottom: 0,
+                  child: Container(
+                    width: 17,
+                    height: 17,
+                    decoration: BoxDecoration(
+                      color: dot,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: GlassTokens.surface, width: 3),
                     ),
-                  ),
-                ),
-
-                // ───────────────────────────────────────────────────────
-                // Chevron
-                // ───────────────────────────────────────────────────────
-                Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: Icon(
-                    Icons.chevron_right_rounded,
-                    color: GlassTokens.textMuted.withValues(alpha: 0.8),
                   ),
                 ),
               ],
             ),
           ),
 
+          const SizedBox(width: 12),
+
           // ─────────────────────────────────────────────────────────────
-          // Right status edge — stretched to the row's height by the Stack
+          // Name, ID · last seen, tags
           // ─────────────────────────────────────────────────────────────
-          Positioned(
-            top: 0,
-            bottom: 0,
-            right: 0,
-            width: 6,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    statusColor.withValues(alpha: 0.85),
-                    statusColor.withValues(alpha: 0.45),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  name,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15.5,
+                    color: GlassTokens.textPrimary,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  subtitle == null ? id : '$id · $subtitle',
+                  style: const TextStyle(
+                    color: GlassTokens.textMuted,
+                    fontSize: 12,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 7),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: [
+                    isEspConnected
+                        ? StatusTag.direct(label: statusText)
+                        : StatusTag(
+                            label: statusText,
+                            color: statusColor,
+                            showDot: true,
+                          ),
+                    if (type != null)
+                      StatusTag(label: type.$1, icon: type.$2, color: type.$3),
                   ],
                 ),
-              ),
+              ],
             ),
+          ),
+
+          const Icon(
+            Icons.chevron_right_rounded,
+            color: GlassTokens.textMuted,
           ),
         ],
       ),
     );
   }
 
-  /// The device-type icon, centred in the avatar circle.
-  Widget _fallbackIcon(String typePrefix, Color color) {
+  /// The device-type icon, centred in the photo tile.
+  Widget _fallbackIcon((String, IconData, Color)? type) {
     return Center(
       child: Icon(
-        _fallbackIcons[typePrefix] ?? Icons.device_unknown,
-        size: 34,
-        color: color,
+        type?.$2 ?? Icons.device_unknown,
+        size: 30,
+        color: type?.$3 ?? GlassTokens.textMuted,
       ),
     );
   }

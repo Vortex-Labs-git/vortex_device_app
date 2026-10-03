@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../services/device_control_api.dart';
 import '../../services/auth_service.dart';
@@ -27,13 +28,13 @@ import 'utils/valve_utils.dart';
 
 // Card widgets
 import 'widgets/change_wifi_button.dart';
-import 'widgets/control_mode_card.dart';
-import 'widgets/device_info_card.dart';
-import 'widgets/mode_toggle_card.dart';
+import 'widgets/control_tabs.dart';
 import 'widgets/motor_calibration_button.dart';
+import 'widgets/runs_on_card.dart';
 import 'widgets/schedule_card.dart';
 import 'widgets/sensor_card.dart';
 import 'widgets/valve_control_card.dart';
+import 'widgets/valve_header.dart';
 import '../../utils/app_log.dart';
 
 // =============================================================================
@@ -760,7 +761,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
   // ===========================================================================
 
   @override
-    Widget build(BuildContext context) {
+  Widget build(BuildContext context) {
     final bool isOnline = _isDirectMode
         ? true
         : isDeviceOnline(_device['vwv_last_seen']?.toString());
@@ -780,168 +781,257 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
             ? 'sensor'
             : _controlMode;
 
+    // UI v2 tabs replace the Control-by card. Same rules: while an automation
+    // runs, only its card is reachable; offline, manual control is locked.
+    final bool automated = _isScheduleMode || _isSensorMode;
+    final Set<String> lockedTabs = automated
+        ? ({'manual', 'schedule', 'sensor'}..remove(activeCard))
+        : (!isOnline ? {'manual'} : <String>{});
+
+    final double topInset = MediaQuery.paddingOf(context).top;
+
     return GlassScaffold(
-      // ─── App bar ───────────────────────────────────────────────────────
-      // Tinted green in direct mode, so "I'm talking straight to the valve"
-      // is visible in the chrome itself.
-      appBar: GlassAppBar(
-        title: _isDirectMode ? 'Direct Control' : 'Vortex Labs',
-        tint: _isDirectMode ? GlassTokens.success : null,
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: Icon(
-              _wsConnected
-                  ? (_isDirectMode ? Icons.settings_remote : Icons.wifi)
-                  : Icons.wifi_off,
-              color: _wsConnected ? GlassTokens.success : GlassTokens.danger,
+      // The forest header draws behind the status bar itself.
+      useSafeArea: false,
+
+      // 9.8  Save bars — separate from the lists, pinned to the bottom
+      bottomNavigationBar: activeCard == 'schedule'
+          ? ScheduleSaveBar(
+              hasUnsavedChanges: _schedulesLocallyEdited,
+              isSaving: _isSavingSchedule,
+              onSavePressed: _saveSchedule,
+            )
+          : activeCard == 'sensor' && _sensorReading != null
+              ? ScheduleSaveBar(
+                  hasUnsavedChanges: _sensorRulesLocallyEdited,
+                  isSaving: _isSavingSensorRules,
+                  onSavePressed: _saveSensorRules,
+                  saveLabel: 'Save sensor rules',
+                )
+              : null,
+
+      body: Stack(
+        children: [
+          ListView(
+            padding: EdgeInsets.only(
+              bottom: 16 + MediaQuery.paddingOf(context).bottom,
+            ),
+            children: [
+              // 9.1  Device header (replaces the app bar + DeviceInfoCard)
+              ValveHeader(
+                deviceName: _deviceName,
+                deviceId: _device['id']?.toString() ?? '',
+                productType: _device['vwv_version']?.toString() ?? 'Unknown',
+                isOnline: isOnline,
+                isDirectMode: _isDirectMode,
+                linkConnected: _wsConnected,
+                onEditName: _showEditNameDialog,
+              ),
+
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // 9.2  What the valve runs on (server mode only)
+                    if (!_isDirectMode && isOnline) ...[
+                      RunsOnCard(
+                        isAutomateMode: _isAutomateMode,
+                        isScheduleMode: _isScheduleMode,
+                        isSensorMode: _isSensorMode,
+                        isSwitching: _isSwitchingMode,
+                        onAutomateChanged: _onAutomateChanged,
+                        onScheduleChanged: _onScheduleChanged,
+                        onSensorChanged: _onSensorChanged,
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+
+                    // 9.3  Which card is shown: tabs online, a note in direct
+                    //      mode (where only manual control works)
+                    if (_isDirectMode)
+                      _directModeNote()
+                    else
+                      ControlTabs(
+                        selected: activeCard,
+                        locked: lockedTabs,
+                        onSelected: (mode) =>
+                            setState(() => _controlMode = mode),
+                        onLockedTap: (mode) => _showMessage(
+                          automated
+                              ? 'Switch the valve to Manual to use this'
+                              : 'Manual control needs the device online',
+                          duration: const Duration(seconds: 2),
+                        ),
+                      ),
+
+                    const SizedBox(height: 14),
+
+                    // 9.4  Schedule card
+                    if (activeCard == 'schedule')
+                      ScheduleCard(
+                        schedules: _schedules,
+                        isSavingSchedule: _isSavingSchedule,
+                        onAddPressed: _showScheduleDialog,
+                        onRowTapped: (i) => _showScheduleDialog(editIndex: i),
+                        onRowDeleted: _deleteSchedule,
+                        onSavePressed: _saveSchedule,
+                      )
+                    // 9.5  Manual mode → Valve control card
+                    else if (activeCard == 'manual')
+                      ValveControlCard(
+                        valveControlEnabled: _valveControlEnabled,
+                        onValveControlEnabledChanged: (v) =>
+                            setState(() => _valveControlEnabled = v),
+                        isOpen: _isValveOpen,
+                        actualPosition: _actualPosition,
+                        isUpdating: _isUpdating,
+                        onOpenCloseToggled: (open) =>
+                            _sendControlCommand(open ? 'Open' : 'Closed'),
+                        sliderAngle: _sliderAngle,
+                        isAngleUpdating: _isAngleUpdating,
+                        onSliderChanged: (v) =>
+                            setState(() => _sliderAngle = v),
+                        onSliderEditStart: () {
+                          // User started dragging — block WS from
+                          // overwriting the angle
+                          _userIsEditingAngle = true;
+                          _angleEditDebounce?.cancel();
+                        },
+                        onSliderEditEnd: () {
+                          // Keep editing flag for 3s so the WS doesn't snap
+                          // back before the user taps "Set"
+                          _angleEditDebounce?.cancel();
+                          _angleEditDebounce = Timer(
+                            const Duration(seconds: 3),
+                            () {
+                              if (mounted) {
+                                setState(() => _userIsEditingAngle = false);
+                              }
+                            },
+                          );
+                        },
+                        onSetAnglePressed: (angle) {
+                          _angleEditDebounce?.cancel();
+                          _userIsEditingAngle = false;
+                          _sendAngleCommand(angle);
+                        },
+                        waitingForConfirmation: _confirmation.isWaiting,
+                        pendingTargetAngle: _confirmation.targetAngle,
+                        confirmationCountdown: _confirmation.countdown,
+                      )
+                    // 9.6  Sensor mode → sensor settings card
+                    else if (activeCard == 'sensor')
+                      SensorCard(
+                        onAddSensorPressed: _addSensor,
+                        onRemoveSensor: _removeSensor,
+                        isLoadingUnits: _isLoadingSensorUnits,
+                        reading: _sensorReading,
+                        isUnitOnline: isDeviceOnline(_sensorReading?.lastSeen),
+                        rules: _sensorRules,
+                        isSavingRules: _isSavingSensorRules,
+                        onAddPressed: _showSensorRuleDialog,
+                        onRowTapped: (i) => _showSensorRuleDialog(editIndex: i),
+                        onRowDeleted: _deleteSensorRule,
+                        onSavePressed: _saveSensorRules,
+                      ),
+
+                    // 9.7  Direct-mode device tools
+                    if (_isDirectMode) ...[
+                      const SizedBox(height: 14),
+                      GlassCard(
+                        padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            const Text(
+                              'Device tools',
+                              style: TextStyle(
+                                fontFamily: GlassTokens.displayFont,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: GlassTokens.textPrimary,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            ChangeWifiButton(
+                              onPressed: () =>
+                                  showWifiCredentialsDialog(context),
+                            ),
+                            const Divider(height: 1, color: GlassTokens.border),
+                            MotorCalibrationButton(
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => MotorCalibrationScreen(
+                                        deviceData: _device),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          // Forest strip behind the status bar, so the clock and battery stay
+          // on green (with light icons) after the header scrolls away.
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: topInset,
+            child: const AnnotatedRegion<SystemUiOverlayStyle>(
+              value: GlassTokens.systemOverlayOnForest,
+              child: ColoredBox(color: GlassTokens.forest),
             ),
           ),
         ],
       ),
-      // ─── Body ──────────────────────────────────────────────────────────
-      body: SingleChildScrollView(
-        padding: EdgeInsets.fromLTRB(
-          16,
-          16,
-          16,
-          16 + MediaQuery.paddingOf(context).bottom,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 9.1  Device info card (always shown)
-            DeviceInfoCard(
-              productType: _device['vwv_version']?.toString() ?? 'Unknown',
-              deviceName: _deviceName,
-              isOnline: isOnline,
-              isDirectMode: _isDirectMode,
-              onEditName: _showEditNameDialog,
+    );
+  }
+
+  /// Direct mode: one plain note instead of locked tabs.
+  Widget _directModeNote() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: GlassTokens.goldSoft,
+        borderRadius: BorderRadius.circular(GlassTokens.radiusMd),
+      ),
+      child: const Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline, size: 18, color: GlassTokens.onGold),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: 'Manual control only\n',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  TextSpan(
+                    text: 'Schedule and sensor rules need the internet. '
+                        'Reconnect the phone to your farm Wi-Fi to use them.',
+                  ),
+                ],
+              ),
+              style: TextStyle(
+                fontSize: 12.5,
+                height: 1.4,
+                color: GlassTokens.textPrimary,
+              ),
             ),
-
-            const SizedBox(height: 16),
-
-            // 9.2  Mode toggle (server mode only)
-            if (!_isDirectMode && isOnline) ...[
-              ModeToggleCard(
-                isAutomateMode: _isAutomateMode,
-                isScheduleMode: _isScheduleMode,
-                isSensorMode: _isSensorMode,
-                isSwitching: _isSwitchingMode,
-                onAutomateChanged: _onAutomateChanged,
-                onScheduleChanged: _onScheduleChanged,
-                onSensorChanged: _onSensorChanged,
-              ),
-              const SizedBox(height: 16),
-            ],
-
-            // 9.3  Control mode selector — manual only. EITHER automate mode
-            //      owning the screen hides it, not just schedule.
-            if (!_isScheduleMode && !_isSensorMode && !_isDirectMode) ...[
-              ControlModeCard(
-                controlMode: _controlMode,
-                isDirectMode: _isDirectMode,
-                isOffline: !isOnline,
-                onModeSelected: (mode) => setState(() => _controlMode = mode),
-                onDisabledTap: (mode) => _showMessage(
-                  mode == 'manual'
-                      ? 'Manual control needs the device online'
-                      : 'Schedule & Sensor require server connection',
-                  duration: const Duration(seconds: 2),
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
-
-            // 9.4  Schedule card
-            if (activeCard == 'schedule')
-              ScheduleCard(
-                schedules: _schedules,
-                isSavingSchedule: _isSavingSchedule,
-                onAddPressed: _showScheduleDialog,
-                onRowTapped: (i) => _showScheduleDialog(editIndex: i),
-                onRowDeleted: _deleteSchedule,
-                onSavePressed: _saveSchedule,
-              )
-            // 9.5  Manual mode → Valve control card
-            else if (activeCard == 'manual')
-              ValveControlCard(
-                valveControlEnabled: _valveControlEnabled,
-                onValveControlEnabledChanged: (v) =>
-                    setState(() => _valveControlEnabled = v),
-                isOpen: _isValveOpen,
-                actualPosition: _actualPosition,
-                isUpdating: _isUpdating,
-                onOpenCloseToggled: (open) =>
-                    _sendControlCommand(open ? 'Open' : 'Closed'),
-                sliderAngle: _sliderAngle,
-                isAngleUpdating: _isAngleUpdating,
-                onSliderChanged: (v) => setState(() => _sliderAngle = v),
-                onSliderEditStart: () {
-                  // User started dragging — block WS from overwriting slider
-                  _userIsEditingAngle = true;
-                  _angleEditDebounce?.cancel();
-                },
-                onSliderEditEnd: () {
-                  // Keep editing flag for 3s so the WS doesn't snap back
-                  // before the user taps "Set Angle"
-                  _angleEditDebounce?.cancel();
-                  _angleEditDebounce = Timer(
-                    const Duration(seconds: 3),
-                    () {
-                      if (mounted) {
-                        setState(() => _userIsEditingAngle = false);
-                      }
-                    },
-                  );
-                },
-                onSetAnglePressed: (angle) {
-                  _angleEditDebounce?.cancel();
-                  _userIsEditingAngle = false;
-                  _sendAngleCommand(angle);
-                },
-                waitingForConfirmation: _confirmation.isWaiting,
-                pendingTargetAngle: _confirmation.targetAngle,
-                confirmationCountdown: _confirmation.countdown,
-              )
-            // 9.6  Sensor mode → sensor settings card
-            else if (activeCard == 'sensor')
-              SensorCard(
-                onAddSensorPressed: _addSensor,
-                onRemoveSensor: _removeSensor,
-                isLoadingUnits: _isLoadingSensorUnits,
-                reading: _sensorReading,
-                isUnitOnline: isDeviceOnline(_sensorReading?.lastSeen),
-                rules: _sensorRules,
-                isSavingRules: _isSavingSensorRules,
-                onAddPressed: _showSensorRuleDialog,
-                onRowTapped: (i) => _showSensorRuleDialog(editIndex: i),
-                onRowDeleted: _deleteSensorRule,
-                onSavePressed: _saveSensorRules,
-              ),
-
-            const SizedBox(height: 16),
-
-            // 9.7  Direct-mode action buttons
-            if (_isDirectMode) ...[
-              ChangeWifiButton(
-                onPressed: () => showWifiCredentialsDialog(context),
-              ),
-              const SizedBox(height: 12),
-              MotorCalibrationButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          MotorCalibrationScreen(deviceData: _device),
-                    ),
-                  );
-                },
-              ),
-            ],
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

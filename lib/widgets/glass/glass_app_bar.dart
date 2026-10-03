@@ -97,9 +97,9 @@ class GlassAppBar extends StatelessWidget implements PreferredSizeWidget {
                         title,
                         style: TextStyle(
                           color: titleColor,
+                          fontFamily: GlassTokens.displayFont,
                           fontWeight: FontWeight.w700,
                           fontSize: 19,
-                          letterSpacing: 0.2,
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -108,7 +108,7 @@ class GlassAppBar extends StatelessWidget implements PreferredSizeWidget {
                           subtitle!,
                           style: TextStyle(
                             color: titleColor.withValues(alpha: 0.62),
-                            fontWeight: FontWeight.w500,
+                            fontWeight: FontWeight.w600,
                             fontSize: 11.5,
                             letterSpacing: 0.1,
                           ),

@@ -143,6 +143,9 @@ class _AppGateState extends State<AppGate> with WidgetsBindingObserver {
 // -----------------------------------------------------------------------------
 // The blocking permission screen, which doubles as the Play disclosure.
 // -----------------------------------------------------------------------------
+// UI v2 layout: an illustration of the phone reaching a device hotspot, then
+// the same three facts as a checklist — why, why location, and the privacy
+// promise — so the disclosure is skimmable without losing any of its wording.
 
 class _PermissionGate extends StatelessWidget {
   final bool busy;
@@ -159,79 +162,242 @@ class _PermissionGate extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const body = TextStyle(fontSize: 15, color: GlassTokens.textSecondary);
-
     return GlassScaffold(
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: GlassCard(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Icon(Icons.wifi_find,
-                      size: 44, color: GlassTokens.accent),
-                  const SizedBox(height: 18),
-                  const Text(
-                    'One permission needed',
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w700,
-                      color: GlassTokens.textPrimary,
-                    ),
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 440),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Center(child: _HotspotArt()),
+                const SizedBox(height: 20),
+                const Text(
+                  'One permission to talk to your devices',
+                  style: TextStyle(
+                    fontFamily: GlassTokens.displayFont,
+                    fontSize: 25,
+                    fontWeight: FontWeight.w800,
+                    height: 1.15,
+                    color: GlassTokens.textPrimary,
                   ),
+                ),
+                const SizedBox(height: 16),
+                const GlassCard(
+                  padding: EdgeInsets.fromLTRB(16, 16, 16, 16),
+                  child: Column(
+                    children: [
+                      _Reason(
+                        icon: Icons.wifi_rounded,
+                        color: GlassTokens.water,
+                        background: GlassTokens.waterSoft,
+                        title: 'Find the device hotspot',
+                        body: 'To control a valve or sensor unit directly, the '
+                            'app needs to recognise when your phone joins the '
+                            'device’s own Wi-Fi hotspot.',
+                      ),
+                      _ReasonDivider(),
+                      _Reason(
+                        icon: Icons.location_on_outlined,
+                        color: GlassTokens.sun,
+                        background: GlassTokens.sunSoft,
+                        title: 'Why Android asks for location',
+                        body: 'Android only reveals the name of the connected '
+                            'Wi-Fi network to apps holding location '
+                            'permission, so it will ask for location next.',
+                      ),
+                      _ReasonDivider(),
+                      _Reason(
+                        icon: Icons.verified_user_outlined,
+                        color: GlassTokens.success,
+                        background: GlassTokens.leafSoft,
+                        title: 'Your location is never read',
+                        body: 'Your location is never read, stored, or sent '
+                            'anywhere. The app reads only the Wi-Fi network '
+                            'name.',
+                      ),
+                    ],
+                  ),
+                ),
+                if (permanentlyDenied) ...[
                   const SizedBox(height: 14),
-                  const Text(
-                    'To control a valve or sensor unit directly, the app needs '
-                    'to recognise when your phone joins the device’s own '
-                    'Wi-Fi hotspot.',
-                    style: body,
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Android only reveals the name of the connected Wi-Fi '
-                    'network to apps holding location permission, so it will '
-                    'ask for location next.',
-                    style: body,
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Your location is never read, stored, or sent anywhere. '
-                    'The app reads only the Wi-Fi network name.',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: GlassTokens.textPrimary,
+                  GlassCard(
+                    tint: GlassTokens.danger,
+                    tintStrength: 0.12,
+                    padding: const EdgeInsets.all(14),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.error_outline,
+                            color: GlassTokens.danger, size: 20),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Android will no longer show the permission '
+                            'prompt for this app. Please enable Location in '
+                            'the app settings, then return here.',
+                            style: TextStyle(
+                              fontSize: 13.5,
+                              height: 1.4,
+                              color: Color.lerp(
+                                  GlassTokens.danger, Colors.black, 0.25),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  if (permanentlyDenied) ...[
-                    const SizedBox(height: 18),
-                    const Text(
-                      'Android will no longer show the permission prompt for '
-                      'this app. Please enable Location in the app settings, '
-                      'then return here.',
-                      style: TextStyle(
-                          fontSize: 15, color: GlassTokens.danger),
-                    ),
-                  ],
-                  const SizedBox(height: 26),
-                  if (busy)
-                    const Center(child: CircularProgressIndicator())
-                  else
-                    GlassButton(
-                      label:
-                          permanentlyDenied ? 'Open app settings' : 'Continue',
-                      onPressed:
-                          permanentlyDenied ? onOpenSettings : onContinue,
-                    ),
                 ],
-              ),
+                const SizedBox(height: 22),
+                if (busy)
+                  const Center(child: CircularProgressIndicator())
+                else
+                  GlassButton(
+                    label: permanentlyDenied ? 'Open app settings' : 'Continue',
+                    onPressed: permanentlyDenied ? onOpenSettings : onContinue,
+                  ),
+              ],
             ),
           ),
         ),
       ),
     );
   }
+}
+
+class _Reason extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final Color background;
+  final String title;
+  final String body;
+
+  const _Reason({
+    required this.icon,
+    required this.color,
+    required this.background,
+    required this.title,
+    required this.body,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: background,
+            borderRadius: BorderRadius.circular(GlassTokens.radiusSm),
+          ),
+          child: Icon(icon, color: color, size: 20),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w800,
+                  color: GlassTokens.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                body,
+                style: const TextStyle(
+                  fontSize: 13,
+                  height: 1.4,
+                  color: GlassTokens.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ReasonDivider extends StatelessWidget {
+  const _ReasonDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 12),
+      child: Divider(height: 1, color: GlassTokens.border),
+    );
+  }
+}
+
+// Phone on the left, a valve on the right, gold Wi-Fi arcs between them.
+class _HotspotArt extends StatelessWidget {
+  const _HotspotArt();
+
+  @override
+  Widget build(BuildContext context) {
+    return ExcludeSemantics(
+      child: SizedBox(
+        width: 210,
+        height: 130,
+        child: CustomPaint(painter: _HotspotPainter()),
+      ),
+    );
+  }
+}
+
+class _HotspotPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Soft disc behind everything.
+    canvas.drawCircle(const Offset(105, 65), 62,
+        Paint()..color = GlassTokens.leafSoft);
+
+    // Phone.
+    final RRect phone = RRect.fromRectAndRadius(
+        const Rect.fromLTWH(40, 30, 44, 76), const Radius.circular(9));
+    canvas.drawRRect(phone, Paint()..color = GlassTokens.surface);
+    canvas.drawRRect(
+        phone,
+        Paint()
+          ..color = GlassTokens.textPrimary
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2);
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(
+            const Rect.fromLTWH(47, 40, 30, 40), const Radius.circular(4)),
+        Paint()..color = GlassTokens.primary);
+
+    // Valve: actuator box on a stem, gold indicator.
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(
+            const Rect.fromLTWH(128, 52, 40, 34), const Radius.circular(6)),
+        Paint()..color = GlassTokens.forest);
+    canvas.drawRect(const Rect.fromLTWH(142, 86, 12, 20),
+        Paint()..color = GlassTokens.textSecondary);
+    canvas.drawCircle(
+        const Offset(148, 68), 6, Paint()..color = GlassTokens.gold);
+
+    // Wi-Fi arcs.
+    final Paint arc = Paint()
+      ..color = GlassTokens.gold
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3
+      ..strokeCap = StrokeCap.round;
+    canvas.drawArc(Rect.fromCircle(center: const Offset(106, 72), radius: 16),
+        3.6, 2.2, false, arc);
+    canvas.drawArc(Rect.fromCircle(center: const Offset(106, 72), radius: 8),
+        3.6, 2.2, false, arc);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

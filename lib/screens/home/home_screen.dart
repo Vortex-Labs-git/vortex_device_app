@@ -1,12 +1,15 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../controllers/device_repository.dart';
 import '../../controllers/esp_session.dart';
 import '../../controllers/network_watcher.dart';
 import '../../models/device.dart';
+import '../../services/auth_service.dart';
 import '../../theme/glass_theme.dart';
+import '../../widgets/glass/glass.dart';
 import '../device_detail/device_detail_screen.dart';
 import '../device_detail/plug_detail_screen.dart';
 import '../device_detail/sensor_detail_screen.dart';
@@ -28,6 +31,8 @@ import 'widgets/error_view.dart';
 // This widget only: subscribes, setState-mirrors the snapshots, shows the
 // session snackbar, and navigates. It owns no timers, no lifecycle observer,
 // no WiFi code, and no ESP streams — do not add logic back here.
+// (UI v2 adds one piece of view-only state, the device type filter; the
+// header summary is counted from the same snapshot.)
 //
 // Debug terminal: removed from this screen. The controllers each expose a
 // logStream; a future standalone debug screen can merge those, use
@@ -47,6 +52,9 @@ class _HomeScreenState extends State<HomeScreen> {
   // Mirrored controller snapshots — the only state this screen holds.
   DeviceRepositoryState _repo = DeviceRepository.instance.current;
   NetworkState _network = NetworkWatcher.instance.current;
+
+  // View-only state: which device types the list shows.
+  _DeviceFilter _filter = _DeviceFilter.all;
 
   StreamSubscription<DeviceRepositoryState>? _repoSub;
   StreamSubscription<NetworkState>? _networkSub;
@@ -154,12 +162,56 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // -- View helpers (pure: derived from the snapshot, no state) --
+
+  bool _matchesFilter(Device d) {
+    switch (_filter) {
+      case _DeviceFilter.all:
+        return true;
+      case _DeviceFilter.valves:
+        return d.isValve;
+      case _DeviceFilter.sensors:
+        return d.isSensor;
+      case _DeviceFilter.plugs:
+        return d.isPlug;
+    }
+  }
+
+  /// "Updated 3 s ago" / "Last seen 2 h ago" from the same lastSeen the
+  /// status rule uses. Refreshes whenever a new snapshot arrives.
+  String _seenText(Device d) {
+    if (d.status == DeviceStatus.espConnected) return 'Phone joined its hotspot';
+    final DateTime? seen = d.lastSeen;
+    if (seen == null) return 'Not seen yet';
+
+    final Duration diff = DateTime.now().difference(seen);
+    final int s = diff.inSeconds < 0 ? 0 : diff.inSeconds;
+    final String ago = s < 60
+        ? '$s s'
+        : s < 3600
+            ? '${diff.inMinutes} min'
+            : s < 86400
+                ? '${diff.inHours} h'
+                : '${diff.inDays} d';
+    return d.status == DeviceStatus.online
+        ? 'Updated $ago ago'
+        : 'Last seen $ago ago';
+  }
+
+  String get _greeting {
+    final int h = DateTime.now().hour;
+    if (h < 12) return 'Good morning';
+    if (h < 17) return 'Good afternoon';
+    return 'Good evening';
+  }
+
   // -- Build --
 
   @override
   Widget build(BuildContext context) {
-    // No Scaffold and no background: this is a tab inside MainScreen's
-    // GlassScaffold, and the gradient backdrop has to show through.
+    // No Scaffold: this is a tab inside MainScreen's GlassScaffold. Home gets
+    // no app bar and no top SafeArea there — the forest header below draws
+    // behind the status bar itself.
     if (_repo.isLoading) {
       return const Center(
         child: Column(
@@ -176,59 +228,417 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    if (_repo.errorMessage != null && _repo.devices.isEmpty) {
-      return ErrorView(
-        message: _repo.errorMessage!,
-        onRetry: () => DeviceRepository.instance.retry(),
-      );
-    }
-
-    if (_repo.devices.isEmpty) return const EmptyView();
-
-    return _buildDeviceList();
-  }
-
-  Widget _buildDeviceList() {
+    final double topInset = MediaQuery.paddingOf(context).top;
     // With extendBody on the shell Scaffold, the bottom inset already covers
-    // the translucent nav bar — add it so the last card clears the bar while
-    // the list still scrolls underneath it.
+    // the floating nav bar — add it so the last card clears the bar while the
+    // list still scrolls underneath it.
     final double bottomInset = MediaQuery.paddingOf(context).bottom;
 
-    return Column(
+    final List<Widget> children = [_buildHeader()];
+
+    if (_repo.errorMessage != null && _repo.devices.isEmpty) {
+      children.add(ErrorView(
+        message: _repo.errorMessage!,
+        onRetry: () => DeviceRepository.instance.retry(),
+      ));
+    } else if (_repo.devices.isEmpty) {
+      children.add(const EmptyView());
+    } else {
+      children.addAll(_buildDeviceList());
+    }
+
+    return Stack(
       children: [
-        ConnectionStatusBar(
-          wsConnected: _repo.wsConnected,
-          isEspApMode: _network.isVortexAp,
-          connectedSsid: _network.ssid,
+        RefreshIndicator(
+          color: GlassTokens.primary,
+          backgroundColor: GlassTokens.surface,
+          edgeOffset: topInset,
+          onRefresh: () async {
+            // WiFi half first (may trigger EspSession via the watcher),
+            // then the server half.
+            await NetworkWatcher.instance.checkNow();
+            await DeviceRepository.instance.refresh();
+          },
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: EdgeInsets.only(bottom: 16 + bottomInset),
+            children: children,
+          ),
         ),
-        Expanded(
-          child: RefreshIndicator(
-            color: GlassTokens.primary,
-            backgroundColor: Colors.white.withValues(alpha: 0.9),
-            onRefresh: () async {
-              // WiFi half first (may trigger EspSession via the watcher),
-              // then the server half.
-              await NetworkWatcher.instance.checkNow();
-              await DeviceRepository.instance.refresh();
-            },
-            child: ListView.builder(
-              padding: EdgeInsets.fromLTRB(16, 4, 16, 16 + bottomInset),
-              itemCount: _repo.devices.length,
-              itemBuilder: (context, index) {
-                final device = _repo.devices[index];
-                return DeviceCard(
-                  device: device.raw,
-                  statusText: device.status.label,
-                  statusColor: _statusColor(device.status),
-                  isEspConnected:
-                      device.status == DeviceStatus.espConnected,
-                  onTap: () => _onDeviceTap(device),
-                );
-              },
-            ),
+
+        // Forest strip behind the status bar, so the clock and battery stay
+        // on green (with light icons) after the header scrolls away.
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          height: topInset,
+          child: const AnnotatedRegion<SystemUiOverlayStyle>(
+            value: GlassTokens.systemOverlayOnForest,
+            child: ColoredBox(color: GlassTokens.forest),
           ),
         ),
       ],
+    );
+  }
+
+  /// Forest header: logo, greeting, and a sliding row of summary tiles
+  /// (online, valves, sensor units, smart plugs) counted from the device list
+  /// — no extra data needed from the server.
+  Widget _buildHeader() {
+    final devices = _repo.devices;
+    final int online =
+        devices.where((d) => d.status != DeviceStatus.offline).length;
+    final int valves = devices.where((d) => d.isValve).length;
+    final int sensors = devices.where((d) => d.isSensor).length;
+    final int plugs = devices.where((d) => d.isPlug).length;
+    final String name =
+        (AuthService.currentUser?['name'] ?? '').toString().trim();
+
+    return ForestHeader(
+      // No side padding: the stat row runs edge to edge so it can slide.
+      padding: const EdgeInsets.fromLTRB(0, 8, 0, 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: _headerGutter),
+            child: Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(13),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: Image.asset(
+                    'assets/images/logo.jpeg',
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) => const Icon(
+                      Icons.eco_rounded,
+                      color: GlassTokens.forest,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _greeting,
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: Colors.white.withValues(alpha: 0.75),
+                        ),
+                      ),
+                      Text(
+                        name.isEmpty ? 'Your farm' : name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontFamily: GlassTokens.displayFont,
+                          fontSize: 21,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          _HeaderStats(
+            stats: [
+              ForestStat(
+                icon: Icons.wifi_rounded,
+                iconColor: GlassTokens.gold,
+                value: '$online/${devices.length}',
+                label: 'devices online',
+                highlight: true,
+              ),
+              ForestStat(
+                icon: Icons.water_drop_outlined,
+                iconColor: ForestStat.onForestWater,
+                value: '$valves',
+                label: valves == 1 ? 'valve' : 'valves',
+              ),
+              ForestStat(
+                icon: Icons.sensors,
+                iconColor: ForestStat.onForestSensor,
+                value: '$sensors',
+                label: sensors == 1 ? 'sensor unit' : 'sensor units',
+              ),
+              ForestStat(
+                icon: Icons.power_outlined,
+                iconColor: ForestStat.onForestPlug,
+                value: '$plugs',
+                label: plugs == 1 ? 'smart plug' : 'smart plugs',
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildDeviceList() {
+    final devices = _repo.devices;
+    final visible = devices.where(_matchesFilter).toList();
+    final bool live = _repo.wsConnected;
+
+    int count(bool Function(Device) test) => devices.where(test).length;
+
+    return [
+      ConnectionStatusBar(
+        wsConnected: _repo.wsConnected,
+        isEspApMode: _network.isVortexAp,
+        connectedSsid: _network.ssid,
+      ),
+
+      // Filter chips — by the ID prefix the app already routes on.
+      SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+        child: Row(
+          children: [
+            _FilterChip(
+              label: 'All',
+              count: devices.length,
+              selected: _filter == _DeviceFilter.all,
+              onTap: () => setState(() => _filter = _DeviceFilter.all),
+            ),
+            _FilterChip(
+              label: 'Valves',
+              count: count((d) => d.isValve),
+              selected: _filter == _DeviceFilter.valves,
+              onTap: () => setState(() => _filter = _DeviceFilter.valves),
+            ),
+            _FilterChip(
+              label: 'Sensors',
+              count: count((d) => d.isSensor),
+              selected: _filter == _DeviceFilter.sensors,
+              onTap: () => setState(() => _filter = _DeviceFilter.sensors),
+            ),
+            _FilterChip(
+              label: 'Plugs',
+              count: count((d) => d.isPlug),
+              selected: _filter == _DeviceFilter.plugs,
+              onTap: () => setState(() => _filter = _DeviceFilter.plugs),
+            ),
+          ],
+        ),
+      ),
+
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Expanded(
+              child: Text(
+                live ? 'Your devices' : 'Saved devices',
+                style: const TextStyle(
+                  fontFamily: GlassTokens.displayFont,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  color: GlassTokens.textPrimary,
+                ),
+              ),
+            ),
+            Text(
+              live ? 'Pull down to refresh' : 'From your phone',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: GlassTokens.textMuted,
+              ),
+            ),
+          ],
+        ),
+      ),
+
+      if (visible.isEmpty)
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 20, 16, 0),
+          child: Text(
+            'No devices of this type.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: GlassTokens.textMuted),
+          ),
+        ),
+
+      for (final device in visible)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: DeviceCard(
+            device: device.raw,
+            statusText: device.status.label,
+            statusColor: _statusColor(device.status),
+            isEspConnected: device.status == DeviceStatus.espConnected,
+            isOffline: device.status == DeviceStatus.offline,
+            subtitle: _seenText(device),
+            onTap: () => _onDeviceTap(device),
+          ),
+        ),
+    ];
+  }
+}
+
+enum _DeviceFilter { all, valves, sensors, plugs }
+
+/// Side gutter of the forest header's content.
+const double _headerGutter = 18;
+
+// -----------------------------------------------------------------------------
+// Header summary tiles: a horizontal row that slides. About 2.6 tiles fit the
+// width, so the next one always peeks in and the row reads as swipeable. Page
+// dots under it show whether you are at the start or the end.
+// -----------------------------------------------------------------------------
+
+class _HeaderStats extends StatefulWidget {
+  final List<Widget> stats;
+
+  const _HeaderStats({required this.stats});
+
+  @override
+  State<_HeaderStats> createState() => _HeaderStatsState();
+}
+
+class _HeaderStatsState extends State<_HeaderStats> {
+  static const double _gap = 8;
+  static const double _height = 104;
+
+  final ScrollController _controller = ScrollController();
+  bool _atEnd = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(() {
+      final pos = _controller.position;
+      final bool atEnd = pos.pixels > pos.maxScrollExtent / 2;
+      if (atEnd != _atEnd) setState(() => _atEnd = atEnd);
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final double tileWidth =
+            (constraints.maxWidth - _headerGutter * 2 - _gap * 2) / 2.6;
+        final bool scrolls =
+            widget.stats.length * (tileWidth + _gap) - _gap >
+                constraints.maxWidth - _headerGutter * 2;
+
+        return Column(
+          children: [
+            SizedBox(
+              height: _height,
+              child: ListView.separated(
+                controller: _controller,
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: _headerGutter),
+                itemCount: widget.stats.length,
+                separatorBuilder: (_, _) => const SizedBox(width: _gap),
+                itemBuilder: (_, i) =>
+                    SizedBox(width: tileWidth, child: widget.stats[i]),
+              ),
+            ),
+            if (scrolls) ...[
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [_dot(!_atEnd), const SizedBox(width: 5), _dot(_atEnd)],
+              ),
+            ],
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _dot(bool on) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      width: on ? 16 : 6,
+      height: 6,
+      decoration: BoxDecoration(
+        color: on ? GlassTokens.gold : Colors.white.withValues(alpha: 0.3),
+        borderRadius: BorderRadius.circular(9),
+      ),
+    );
+  }
+}
+
+// -----------------------------------------------------------------------------
+// One filter pill: label + count. Selected is a dark filled pill.
+// -----------------------------------------------------------------------------
+
+class _FilterChip extends StatelessWidget {
+  final String label;
+  final int count;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _FilterChip({
+    required this.label,
+    required this.count,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final Color fg = selected ? GlassTokens.ground : GlassTokens.textSecondary;
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: Material(
+        color: selected ? GlassTokens.textPrimary : GlassTokens.surface,
+        shape: StadiumBorder(
+          side: BorderSide(
+            color: selected ? GlassTokens.textPrimary : GlassTokens.border,
+          ),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          customBorder: const StadiumBorder(),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(text: label),
+                  TextSpan(
+                    text: '  $count',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: fg.withValues(alpha: 0.7),
+                    ),
+                  ),
+                ],
+              ),
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: fg,
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

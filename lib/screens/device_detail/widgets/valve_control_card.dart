@@ -15,8 +15,10 @@ import '../../../widgets/glass/glass.dart';
 //   2. Action        only the next thing to do: "Close valve" when it is
 //                    open, "Open valve" when it is closed, both (small) when it
 //                    is part-way. Sends the same Open / Closed command.
-//   3. Advanced      a quarter-turn handle to drag to any angle (1° steps),
-//                    then "Set valve to X°". Sends the same Set Angle command.
+//   3. Advanced      the lever seen from above (what the valve reports, and
+//                    a dashed outline of the angle being set), the 0–90°
+//                    slider in 1° steps, and "Set valve to X°". Sends the
+//                    same Set Angle command.
 //
 // Same constructor as before. [valveControlEnabled] still means "state mode";
 // it is now the Advanced fold: folded = state mode (true), open = angle mode
@@ -296,20 +298,64 @@ class ValveControlCard extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        _TurnHandle(
-                          angle: angle,
-                          enabled: !_busy,
-                          onChanged: (v) => onSliderChanged(v.toDouble()),
-                          onStart: onSliderEditStart,
-                          onEnd: onSliderEditEnd,
+                        _LeverPicture(
+                          actual: actualPosition.clamp(0, 90),
+                          target: angle,
                         ),
-                        const Text(
-                          'Drag the handle like the real quarter-turn valve',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: GlassTokens.textMuted,
-                          ),
+                        const SizedBox(height: 10),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.baseline,
+                          textBaseline: TextBaseline.alphabetic,
+                          children: [
+                            Text(
+                              '$angle°',
+                              style: const TextStyle(
+                                fontFamily: GlassTokens.displayFont,
+                                fontSize: 26,
+                                fontWeight: FontWeight.w800,
+                                color: GlassTokens.water,
+                              ),
+                            ),
+                            const Spacer(),
+                            Text(
+                              angle == 0
+                                  ? 'Closed'
+                                  : angle == 90
+                                      ? 'Fully open'
+                                      : 'Partly open',
+                              style: const TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w700,
+                                color: GlassTokens.textMuted,
+                              ),
+                            ),
+                          ],
+                        ),
+                        // The old method: 0–90° in 1° steps.
+                        Slider(
+                          value: sliderAngle.clamp(0, 90),
+                          min: 0,
+                          max: 90,
+                          divisions: 90,
+                          label: '$angle°',
+                          activeColor: GlassTokens.water,
+                          onChanged: _busy ? null : onSliderChanged,
+                          onChangeStart:
+                              _busy ? null : (_) => onSliderEditStart(),
+                          onChangeEnd: _busy ? null : (_) => onSliderEditEnd(),
+                        ),
+                        const Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text('0° closed',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color: GlassTokens.textMuted)),
+                            Text('90° open',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color: GlassTokens.textMuted)),
+                          ],
                         ),
                         const SizedBox(height: 10),
                         GlassButton(
@@ -453,70 +499,34 @@ class _SmallChoice extends StatelessWidget {
 }
 
 // -----------------------------------------------------------------------------
-// Turn handle: a quarter-turn dial. 0° points up (closed), 90° points right
-// (open). Drag anywhere on it; the angle follows the finger in 1° steps.
+// Lever picture: the valve seen from above. The lever on the stem lies across
+// the pipe when closed (0°) and along it when open (90°), as on the real valve.
+// Solid = what the valve reports (animates as reports arrive); dashed = the
+// angle being set on the slider, shown only while it differs. Display only —
+// the slider below does the setting.
 // -----------------------------------------------------------------------------
 
-class _TurnHandle extends StatelessWidget {
-  final int angle;
-  final bool enabled;
-  final ValueChanged<int> onChanged;
-  final VoidCallback onStart;
-  final VoidCallback onEnd;
+class _LeverPicture extends StatelessWidget {
+  final int actual;
+  final int target;
 
-  const _TurnHandle({
-    required this.angle,
-    required this.enabled,
-    required this.onChanged,
-    required this.onStart,
-    required this.onEnd,
-  });
-
-  static const double _size = 210;
-
-  void _update(Offset local) {
-    final Offset c = const Offset(_size / 2, _size / 2);
-    final double dx = local.dx - c.dx;
-    final double dy = c.dy - local.dy;
-    // Clockwise from straight up.
-    final double deg = math.atan2(dx, dy) * 180 / math.pi;
-    final int v = deg.round().clamp(0, 90);
-    if (v != angle) onChanged(v);
-  }
+  const _LeverPicture({required this.actual, required this.target});
 
   @override
   Widget build(BuildContext context) {
+    final bool still = MediaQuery.of(context).disableAnimations;
     return Semantics(
-      slider: true,
-      label: 'Valve angle',
-      value: '$angle degrees',
-      increasedValue: '${(angle + 5).clamp(0, 90)} degrees',
-      decreasedValue: '${(angle - 5).clamp(0, 90)} degrees',
-      onIncrease: enabled ? () => onChanged((angle + 5).clamp(0, 90)) : null,
-      onDecrease: enabled ? () => onChanged((angle - 5).clamp(0, 90)) : null,
-      child: Center(
-        child: Opacity(
-          opacity: enabled ? 1 : 0.6,
-          child: GestureDetector(
-            onPanStart: enabled
-                ? (d) {
-                    onStart();
-                    _update(d.localPosition);
-                  }
-                : null,
-            onPanUpdate: enabled ? (d) => _update(d.localPosition) : null,
-            onPanEnd: enabled ? (_) => onEnd() : null,
-            onTapUp: enabled
-                ? (d) {
-                    onStart();
-                    _update(d.localPosition);
-                    onEnd();
-                  }
-                : null,
-            child: SizedBox(
-              width: _size,
-              height: _size,
-              child: CustomPaint(painter: _HandlePainter(angle)),
+      label: 'Valve lever at $actual degrees',
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(GlassTokens.radiusMd),
+        child: AspectRatio(
+          aspectRatio: 16 / 9,
+          child: TweenAnimationBuilder<double>(
+            tween: Tween(end: actual.toDouble()),
+            duration: still ? Duration.zero : const Duration(milliseconds: 600),
+            curve: Curves.easeInOutCubic,
+            builder: (_, shown, _) => CustomPaint(
+              painter: _LeverPainter(actual: shown, target: target),
             ),
           ),
         ),
@@ -525,97 +535,123 @@ class _TurnHandle extends StatelessWidget {
   }
 }
 
-class _HandlePainter extends CustomPainter {
-  final int angle;
+class _LeverPainter extends CustomPainter {
+  final double actual;
+  final int target;
 
-  _HandlePainter(this.angle);
+  _LeverPainter({required this.actual, required this.target});
 
   @override
   void paint(Canvas canvas, Size size) {
-    final Offset c = size.center(Offset.zero);
-    final double r = size.width / 2 - 14;
-    final Rect dial = Rect.fromCircle(center: c, radius: r);
-    const double up = -math.pi / 2;
+    final double w = size.width;
+    final double h = size.height;
+    final Offset c = Offset(w / 2, h * 0.62);
+    final double u = h / 360; // design units: drawn at 640 x 360
 
-    // Dial face, the 0–90° quarter, and the current opening.
-    canvas.drawCircle(c, r, Paint()..color = GlassTokens.sunk);
-    canvas.drawArc(dial, up, math.pi / 2, true,
-        Paint()..color = GlassTokens.waterSoft);
-    if (angle > 0) {
-      canvas.drawArc(dial, up, angle * math.pi / 180, true,
-          Paint()..color = GlassTokens.water.withValues(alpha: 0.35));
-    }
+    canvas.drawRect(Offset.zero & size, Paint()..color = GlassTokens.sunk);
 
-    // End labels.
-    void label(String text, Offset at) {
-      final tp = TextPainter(
-        text: TextSpan(
-          text: text,
-          style: const TextStyle(
-            fontFamily: GlassTokens.bodyFont,
-            fontSize: 9.5,
-            fontWeight: FontWeight.w800,
-            color: GlassTokens.textMuted,
-          ),
-        ),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      tp.paint(canvas, at - Offset(tp.width / 2, tp.height / 2));
-    }
-
-    label('CLOSED 0°', Offset(c.dx, 6));
-    label('OPEN 90°', Offset(size.width - 22, c.dy - 12));
-
-    // Hub ring.
-    canvas.drawCircle(c, r * 0.46, Paint()..color = GlassTokens.surface);
-    canvas.drawCircle(
-      c,
-      r * 0.46,
+    // Pipe, with water that deepens as the valve opens.
+    final Rect pipe = Rect.fromLTRB(0, c.dy - 44 * u, w, c.dy + 44 * u);
+    canvas.drawRect(pipe, Paint()..color = const Color(0xFFD5DED8));
+    canvas.drawLine(pipe.topLeft, pipe.topRight,
+        Paint()..color = const Color(0xFFAEBBB2)..strokeWidth = 3 * u);
+    canvas.drawLine(pipe.bottomLeft, pipe.bottomRight,
+        Paint()..color = const Color(0xFFAEBBB2)..strokeWidth = 3 * u);
+    canvas.drawRect(
+      Rect.fromLTRB(0, c.dy - 28 * u, w, c.dy + 28 * u),
       Paint()
-        ..color = GlassTokens.border
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2,
+        ..color = GlassTokens.water
+            .withValues(alpha: 0.25 + 0.55 * (actual / 90).clamp(0, 1)),
     );
 
-    // Handle, rotated by the angle.
-    canvas.save();
-    canvas.translate(c.dx, c.dy);
-    canvas.rotate(angle * math.pi / 180);
-    final RRect bar = RRect.fromRectAndRadius(
-      Rect.fromLTWH(-8, -r * 0.78, 16, r * 0.78 + 4),
-      const Radius.circular(8),
+    // Valve body.
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromCenter(center: c, width: 110 * u, height: 110 * u),
+        Radius.circular(18 * u),
+      ),
+      Paint()..color = const Color(0xFFBFC9C2),
     );
-    canvas.drawRRect(bar, Paint()..color = GlassTokens.forest);
-    canvas.drawCircle(
-        Offset(0, -r * 0.72), 10, Paint()..color = GlassTokens.gold);
-    canvas.restore();
 
-    canvas.drawCircle(c, 9, Paint()..color = GlassTokens.surface);
+    // Quarter-turn track and end marks.
+    final Paint dashed = Paint()
+      ..color = GlassTokens.textMuted
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2 * u;
+    const int dashes = 14;
+    for (int i = 0; i < dashes; i += 2) {
+      canvas.drawArc(
+        Rect.fromCircle(center: c, radius: 128 * u),
+        -math.pi / 2 + (math.pi / 2) * i / dashes,
+        (math.pi / 2) / dashes,
+        false,
+        dashed,
+      );
+    }
+    // Beside the two ends of the track, clear of the lever.
+    _label(canvas, 'CLOSED', Offset(c.dx - 14 * u, c.dy - 150 * u), u,
+        alignRight: true);
+    _label(canvas, 'OPEN', Offset(c.dx + 120 * u, c.dy - 78 * u), u);
+
+    // Target (dashed) when it differs, then the reported lever.
+    if ((target - actual).abs() >= 1) _lever(canvas, c, target.toDouble(), u, ghost: true);
+    _lever(canvas, c, actual, u);
+
+    canvas.drawCircle(c, 13 * u, Paint()..color = GlassTokens.surface);
     canvas.drawCircle(
       c,
-      9,
+      13 * u,
       Paint()
         ..color = GlassTokens.forest
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 3,
+        ..strokeWidth = 5 * u,
     );
+  }
 
-    // Angle readout under the hub.
+  /// 0° points up (across the pipe), 90° points right (along it).
+  void _lever(Canvas canvas, Offset c, double deg, double u,
+      {bool ghost = false}) {
+    canvas.save();
+    canvas.translate(c.dx, c.dy);
+    canvas.rotate((deg - 90) * math.pi / 180);
+    final RRect bar = RRect.fromRectAndRadius(
+      Rect.fromLTWH(-14 * u, -14 * u, 132 * u, 28 * u),
+      Radius.circular(14 * u),
+    );
+    if (ghost) {
+      canvas.drawRRect(
+        bar,
+        Paint()
+          ..color = GlassTokens.textMuted
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 3 * u,
+      );
+    } else {
+      canvas.drawRRect(bar, Paint()..color = GlassTokens.forest);
+      canvas.drawCircle(
+          Offset(104 * u, 0), 12 * u, Paint()..color = GlassTokens.gold);
+    }
+    canvas.restore();
+  }
+
+  void _label(Canvas canvas, String text, Offset at, double u,
+      {bool alignRight = false}) {
     final tp = TextPainter(
       text: TextSpan(
-        text: '$angle°',
-        style: const TextStyle(
-          fontFamily: GlassTokens.displayFont,
-          fontSize: 26,
+        text: text,
+        style: TextStyle(
+          fontFamily: GlassTokens.bodyFont,
+          fontSize: 18 * u,
           fontWeight: FontWeight.w800,
-          color: GlassTokens.textPrimary,
+          color: GlassTokens.textSecondary,
         ),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
-    tp.paint(canvas, Offset(c.dx - tp.width / 2, c.dy + r * 0.5));
+    tp.paint(canvas, alignRight ? at - Offset(tp.width, 0) : at);
   }
 
   @override
-  bool shouldRepaint(_HandlePainter old) => old.angle != angle;
+  bool shouldRepaint(_LeverPainter old) =>
+      old.actual != actual || old.target != target;
 }

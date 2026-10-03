@@ -14,8 +14,13 @@ import 'tool_row.dart';
 
 class ChangeWifiButton extends StatelessWidget {
   final VoidCallback onPressed;
+  final String subtitle;
 
-  const ChangeWifiButton({super.key, required this.onPressed});
+  const ChangeWifiButton({
+    super.key,
+    required this.onPressed,
+    this.subtitle = 'Send your farm Wi-Fi to the valve',
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -24,7 +29,7 @@ class ChangeWifiButton extends StatelessWidget {
       iconColor: GlassTokens.water,
       iconBackground: GlassTokens.waterSoft,
       title: 'Change Wi-Fi',
-      subtitle: 'Send your farm Wi-Fi to the valve',
+      subtitle: subtitle,
       onPressed: onPressed,
     );
   }

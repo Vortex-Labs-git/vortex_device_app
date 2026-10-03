@@ -12,6 +12,10 @@ import '../../../utils/app_log.dart';
 // ESP32. Architecture Doc Page 13. The ESP32 restarts afterwards, so the direct
 // connection is expected to drop right after sending.
 //
+// [isSensorUnit] reuses the same sheet for the sensor unit, which has its own
+// event: set_device_wifi (EspDirectService.setSensorUnitWifi). Only the event
+// and the device word in the texts change.
+//
 // UI v2: a bottom sheet (same pattern as the add-slot sheet) with a short
 // "what happens next" note. Sending, checks and messages are unchanged.
 // =============================================================================
@@ -20,7 +24,11 @@ import '../../../utils/app_log.dart';
 /// credentials before it restarts.
 const Duration _restartGrace = Duration(seconds: 3);
 
-Future<void> showWifiCredentialsDialog(BuildContext context) {
+Future<void> showWifiCredentialsDialog(
+  BuildContext context, {
+  bool isSensorUnit = false,
+}) {
+  final String device = isSensorUnit ? 'sensor unit' : 'valve';
   final ssidController = TextEditingController();
   final passwordController = TextEditingController();
   bool obscurePassword = true;
@@ -60,7 +68,7 @@ Future<void> showWifiCredentialsDialog(BuildContext context) {
 
           if (!EspDirectService.instance.isAuthenticated) {
             showMessage(
-              'Not connected to valve. Go back and reconnect.',
+              'Not connected to $device. Go back and reconnect.',
               color: GlassTokens.danger,
             );
             return;
@@ -68,19 +76,28 @@ Future<void> showWifiCredentialsDialog(BuildContext context) {
 
           setDialogState(() => isSending = true);
 
-          EspDirectService.instance.setWifiCredentials(
-            ssid: ssid,
-            password: password,
-          );
-
-          logD("📤 ESP32: set_valve_wifi ssid=$ssid");
+          if (isSensorUnit) {
+            EspDirectService.instance.setSensorUnitWifi(
+              ssid: ssid,
+              password: password,
+            );
+            logD("📤 ESP32: set_device_wifi ssid=$ssid");
+          } else {
+            EspDirectService.instance.setWifiCredentials(
+              ssid: ssid,
+              password: password,
+            );
+            logD("📤 ESP32: set_valve_wifi ssid=$ssid");
+          }
 
           // ESP32 will restart — the connection will be lost.
           Future.delayed(_restartGrace, () {
             if (!dialogContext.mounted) return;
             Navigator.pop(dialogContext);
             showMessage(
-              'WiFi credentials sent! Valve will restart and connect to your home WiFi.',
+              isSensorUnit
+                  ? 'WiFi credentials sent! Sensor unit will restart and connect to your home WiFi.'
+                  : 'WiFi credentials sent! Valve will restart and connect to your home WiFi.',
               color: GlassTokens.success,
               duration: const Duration(seconds: 5),
             );
@@ -124,11 +141,11 @@ Future<void> showWifiCredentialsDialog(BuildContext context) {
                       child: const Icon(Icons.wifi, color: GlassTokens.water),
                     ),
                     const SizedBox(width: 12),
-                    const Expanded(
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
+                          const Text(
                             'Set farm Wi-Fi',
                             style: TextStyle(
                               fontFamily: GlassTokens.displayFont,
@@ -138,8 +155,8 @@ Future<void> showWifiCredentialsDialog(BuildContext context) {
                             ),
                           ),
                           Text(
-                            'The valve uses this to reach the internet',
-                            style: TextStyle(
+                            'The $device uses this to reach the internet',
+                            style: const TextStyle(
                               fontSize: 12.5,
                               color: GlassTokens.textMuted,
                             ),
@@ -195,13 +212,15 @@ Future<void> showWifiCredentialsDialog(BuildContext context) {
                     color: GlassTokens.sunk,
                     borderRadius: BorderRadius.circular(GlassTokens.radiusSm),
                   ),
-                  child: const Column(
+                  child: Column(
                     children: [
-                      _Step(1, 'The valve saves the name and password'),
-                      SizedBox(height: 6),
-                      _Step(2, 'It restarts, so this direct link will drop'),
-                      SizedBox(height: 6),
-                      _Step(3, 'It joins your farm Wi-Fi and appears online'),
+                      _Step(1, 'The $device saves the name and password'),
+                      const SizedBox(height: 6),
+                      const _Step(
+                          2, 'It restarts, so this direct link will drop'),
+                      const SizedBox(height: 6),
+                      const _Step(
+                          3, 'It joins your farm Wi-Fi and appears online'),
                     ],
                   ),
                 ),

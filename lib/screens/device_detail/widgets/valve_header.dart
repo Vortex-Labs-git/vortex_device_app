@@ -15,6 +15,9 @@ import '../../../widgets/glass/glass.dart';
 // internet needed" / "Direct connected"), the same signal the gold dot gives
 // on Home.
 //
+// The sensor unit screen uses the same band with its own [productLine],
+// photo and fallback icon.
+//
 // DeviceInfoCard is untouched — the plug and Wi-Fi setup screens still use it.
 // View only: every value and callback comes from DeviceDetailScreen.
 // =============================================================================
@@ -31,6 +34,13 @@ class ValveHeader extends StatelessWidget {
 
   final VoidCallback onEditName;
 
+  /// Top-row label outside direct mode.
+  final String productLine;
+
+  /// Product photo, and the icon shown if it fails to load.
+  final String imageAsset;
+  final IconData fallbackIcon;
+
   const ValveHeader({
     super.key,
     required this.deviceName,
@@ -40,6 +50,9 @@ class ValveHeader extends StatelessWidget {
     required this.isDirectMode,
     required this.linkConnected,
     required this.onEditName,
+    this.productLine = 'Motorized valve',
+    this.imageAsset = 'assets/images/VA_3.jpeg',
+    this.fallbackIcon = Icons.water_drop_outlined,
   });
 
   @override
@@ -66,7 +79,7 @@ class ValveHeader extends StatelessWidget {
                 child: Text(
                   isDirectMode
                       ? 'Direct link · no internet needed'
-                      : 'Motorized valve',
+                      : productLine,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -107,10 +120,10 @@ class ValveHeader extends StatelessWidget {
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: Image.asset(
-                  'assets/images/VA_3.jpeg',
+                  imageAsset,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, _, _) => const Icon(
-                    Icons.water_drop_outlined,
+                  errorBuilder: (_, _, _) => Icon(
+                    fallbackIcon,
                     color: GlassTokens.water,
                     size: 30,
                   ),

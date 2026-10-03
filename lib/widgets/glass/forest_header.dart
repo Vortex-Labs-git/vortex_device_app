@@ -105,20 +105,32 @@ class ForestHeader extends StatelessWidget {
 // -----------------------------------------------------------------------------
 // FOREST STAT
 // -----------------------------------------------------------------------------
-// One translucent tile for a header summary row: a big number over a small
-// label ("4/5" / "devices online"). [highlight] paints the number gold.
+// One translucent tile for a header summary row: an optional icon chip, a big
+// number and a small label ("4/5" / "devices online"). [highlight] paints the
+// number gold. [iconColor] tints the icon — use the light "on forest"
+// category hues from [ForestStat] (water, sensor, plug) so they read on green.
 // -----------------------------------------------------------------------------
 
 class ForestStat extends StatelessWidget {
   final String value;
   final String label;
   final bool highlight;
+  final IconData? icon;
+  final Color? iconColor;
+
+  // Category hues lifted for the forest background (the on-white versions —
+  // water / info / sun — are too dark to read on green).
+  static const Color onForestWater = Color(0xFF8EC5FF);
+  static const Color onForestSensor = Color(0xFFC9B3FF);
+  static const Color onForestPlug = Color(0xFFFFC98A);
 
   const ForestStat({
     super.key,
     required this.value,
     required this.label,
     this.highlight = false,
+    this.icon,
+    this.iconColor,
   });
 
   @override
@@ -134,6 +146,18 @@ class ForestStat extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (icon != null) ...[
+            Container(
+              width: 26,
+              height: 26,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(9),
+              ),
+              child: Icon(icon, size: 15, color: iconColor ?? Colors.white),
+            ),
+            const SizedBox(height: 6),
+          ],
           Text(
             value,
             style: TextStyle(
@@ -154,6 +178,7 @@ class ForestStat extends StatelessWidget {
               color: Colors.white.withValues(alpha: 0.75),
             ),
             maxLines: 2,
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),

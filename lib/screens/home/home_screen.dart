@@ -282,92 +282,102 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// Forest header: logo, greeting, and a farm summary counted from the
-  /// device list (no extra data needed from the server).
+  /// Forest header: logo, greeting, and a sliding row of summary tiles
+  /// (online, valves, sensor units, smart plugs) counted from the device list
+  /// — no extra data needed from the server.
   Widget _buildHeader() {
     final devices = _repo.devices;
     final int online =
         devices.where((d) => d.status != DeviceStatus.offline).length;
     final int valves = devices.where((d) => d.isValve).length;
-    final int others = devices.where((d) => d.isSensor || d.isPlug).length;
+    final int sensors = devices.where((d) => d.isSensor).length;
+    final int plugs = devices.where((d) => d.isPlug).length;
     final String name =
         (AuthService.currentUser?['name'] ?? '').toString().trim();
 
     return ForestHeader(
+      // No side padding: the stat row runs edge to edge so it can slide.
+      padding: const EdgeInsets.fromLTRB(0, 8, 0, 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(13),
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: Image.asset(
-                  'assets/images/logo.jpeg',
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, _, _) => const Icon(
-                    Icons.eco_rounded,
-                    color: GlassTokens.forest,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: _headerGutter),
+            child: Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(13),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: Image.asset(
+                    'assets/images/logo.jpeg',
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) => const Icon(
+                      Icons.eco_rounded,
+                      color: GlassTokens.forest,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _greeting,
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        color: Colors.white.withValues(alpha: 0.75),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _greeting,
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: Colors.white.withValues(alpha: 0.75),
+                        ),
                       ),
-                    ),
-                    Text(
-                      name.isEmpty ? 'Your farm' : name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontFamily: GlassTokens.displayFont,
-                        fontSize: 21,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
+                      Text(
+                        name.isEmpty ? 'Your farm' : name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontFamily: GlassTokens.displayFont,
+                          fontSize: 21,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-          const SizedBox(height: 18),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: ForestStat(
-                  value: '$online/${devices.length}',
-                  label: 'devices online',
-                  highlight: true,
-                ),
+          const SizedBox(height: 16),
+          _HeaderStats(
+            stats: [
+              ForestStat(
+                icon: Icons.wifi_rounded,
+                iconColor: GlassTokens.gold,
+                value: '$online/${devices.length}',
+                label: 'devices online',
+                highlight: true,
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: ForestStat(
-                  value: '$valves',
-                  label: valves == 1 ? 'valve' : 'valves',
-                ),
+              ForestStat(
+                icon: Icons.water_drop_outlined,
+                iconColor: ForestStat.onForestWater,
+                value: '$valves',
+                label: valves == 1 ? 'valve' : 'valves',
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: ForestStat(
-                  value: '$others',
-                  label: 'sensors & plugs',
-                ),
+              ForestStat(
+                icon: Icons.sensors,
+                iconColor: ForestStat.onForestSensor,
+                value: '$sensors',
+                label: sensors == 1 ? 'sensor unit' : 'sensor units',
+              ),
+              ForestStat(
+                icon: Icons.power_outlined,
+                iconColor: ForestStat.onForestPlug,
+                value: '$plugs',
+                label: plugs == 1 ? 'smart plug' : 'smart plugs',
               ),
             ],
           ),
@@ -481,6 +491,97 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 enum _DeviceFilter { all, valves, sensors, plugs }
+
+/// Side gutter of the forest header's content.
+const double _headerGutter = 18;
+
+// -----------------------------------------------------------------------------
+// Header summary tiles: a horizontal row that slides. About 2.6 tiles fit the
+// width, so the next one always peeks in and the row reads as swipeable. Page
+// dots under it show whether you are at the start or the end.
+// -----------------------------------------------------------------------------
+
+class _HeaderStats extends StatefulWidget {
+  final List<Widget> stats;
+
+  const _HeaderStats({required this.stats});
+
+  @override
+  State<_HeaderStats> createState() => _HeaderStatsState();
+}
+
+class _HeaderStatsState extends State<_HeaderStats> {
+  static const double _gap = 8;
+  static const double _height = 104;
+
+  final ScrollController _controller = ScrollController();
+  bool _atEnd = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(() {
+      final pos = _controller.position;
+      final bool atEnd = pos.pixels > pos.maxScrollExtent / 2;
+      if (atEnd != _atEnd) setState(() => _atEnd = atEnd);
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final double tileWidth =
+            (constraints.maxWidth - _headerGutter * 2 - _gap * 2) / 2.6;
+        final bool scrolls =
+            widget.stats.length * (tileWidth + _gap) - _gap >
+                constraints.maxWidth - _headerGutter * 2;
+
+        return Column(
+          children: [
+            SizedBox(
+              height: _height,
+              child: ListView.separated(
+                controller: _controller,
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: _headerGutter),
+                itemCount: widget.stats.length,
+                separatorBuilder: (_, _) => const SizedBox(width: _gap),
+                itemBuilder: (_, i) =>
+                    SizedBox(width: tileWidth, child: widget.stats[i]),
+              ),
+            ),
+            if (scrolls) ...[
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [_dot(!_atEnd), const SizedBox(width: 5), _dot(_atEnd)],
+              ),
+            ],
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _dot(bool on) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      width: on ? 16 : 6,
+      height: 6,
+      decoration: BoxDecoration(
+        color: on ? GlassTokens.gold : Colors.white.withValues(alpha: 0.3),
+        borderRadius: BorderRadius.circular(9),
+      ),
+    );
+  }
+}
 
 // -----------------------------------------------------------------------------
 // One filter pill: label + count. Selected is a dark filled pill.

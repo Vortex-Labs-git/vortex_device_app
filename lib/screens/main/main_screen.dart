@@ -48,7 +48,8 @@ class _MainScreenState extends State<MainScreen> {
   // ---------------------------------------------------------------------------
   // SECTION 2: ADD DEVICE SHEET
   // ---------------------------------------------------------------------------
-  // Triggered by the "+" in the bottom bar. Currently a placeholder — captures
+  // Triggered by the "+" in the bottom bar (hidden for now — see
+  // MainBottomNav). Currently a placeholder — captures
   // a name and shows a snackbar. Real backend hookup is still pending.
   //
   // UI v2: a bottom sheet instead of a centred dialog (one-thumb reach). The
@@ -189,7 +190,7 @@ class _MainScreenState extends State<MainScreen> {
         ],
       ),
 
-      // 3.3  Bottom navigation, with the add-device "+" in the middle
+      // 3.3  Bottom navigation (add-device "+" currently hidden)
       bottomNavigationBar: MainBottomNav(
         currentIndex: _currentIndex,
         onTap: (index) => setState(() => _currentIndex = index),

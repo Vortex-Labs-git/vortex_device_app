@@ -171,11 +171,15 @@ class ScheduleSaveBar extends StatelessWidget {
   final bool isSaving;
   final VoidCallback onSavePressed;
 
+  /// Button label. The sensor rules tab reuses this bar.
+  final String saveLabel;
+
   const ScheduleSaveBar({
     super.key,
     required this.hasUnsavedChanges,
     required this.isSaving,
     required this.onSavePressed,
+    this.saveLabel = 'Save schedule',
   });
 
   @override
@@ -195,11 +199,17 @@ class ScheduleSaveBar extends StatelessWidget {
                 ? Align(
                     alignment: Alignment.centerLeft,
                     heightFactor: 1,
-                    child: StatusTag(
-                      label: 'Unsaved changes',
-                      color: GlassTokens.sun,
-                      icon: Icons.edit_outlined,
-                      background: GlassTokens.sunSoft,
+                    // Shrinks rather than overflow beside a long button label
+                    // on a narrow phone.
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: StatusTag(
+                        label: 'Unsaved changes',
+                        color: GlassTokens.sun,
+                        icon: Icons.edit_outlined,
+                        background: GlassTokens.sunSoft,
+                      ),
                     ),
                   )
                 : const Text(
@@ -211,7 +221,7 @@ class ScheduleSaveBar extends StatelessWidget {
                   ),
           ),
           GlassButton(
-            label: isSaving ? 'Saving…' : 'Save schedule',
+            label: isSaving ? 'Saving…' : saveLabel,
             icon: Icons.save_outlined,
             fullWidth: false,
             height: 48,

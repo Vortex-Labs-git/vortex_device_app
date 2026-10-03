@@ -794,14 +794,21 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
       // The forest header draws behind the status bar itself.
       useSafeArea: false,
 
-      // 9.8  Schedule save bar — separate from the list, pinned to the bottom
+      // 9.8  Save bars — separate from the lists, pinned to the bottom
       bottomNavigationBar: activeCard == 'schedule'
           ? ScheduleSaveBar(
               hasUnsavedChanges: _schedulesLocallyEdited,
               isSaving: _isSavingSchedule,
               onSavePressed: _saveSchedule,
             )
-          : null,
+          : activeCard == 'sensor' && _sensorReading != null
+              ? ScheduleSaveBar(
+                  hasUnsavedChanges: _sensorRulesLocallyEdited,
+                  isSaving: _isSavingSensorRules,
+                  onSavePressed: _saveSensorRules,
+                  saveLabel: 'Save sensor rules',
+                )
+              : null,
 
       body: Stack(
         children: [

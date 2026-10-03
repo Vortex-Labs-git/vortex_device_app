@@ -4,6 +4,7 @@ import '../../../theme/glass_theme.dart';
 import '../../../widgets/glass/glass.dart';
 import '../../../models/valve_device.dart';
 import '../utils/schedule_utils.dart';
+import '../widgets/valve_angle_picker.dart';
 
 // =============================================================================
 // SCHEDULE DIALOGS  (UI v2)
@@ -58,7 +59,6 @@ class _ScheduleEntrySheetState extends State<_ScheduleEntrySheet> {
   bool _editingFrom = true;
 
   late double _angle;
-  late bool _advancedOpen;
   String? _error;
 
   /// Remounts the wheels when the target box changes, so they jump to it.
@@ -76,8 +76,6 @@ class _ScheduleEntrySheetState extends State<_ScheduleEntrySheet> {
         ? parseScheduleTime(e.end)
         : const TimeOfDay(hour: 8, minute: 20));
     _angle = (e?.angle ?? 90).toDouble();
-    // Open the fold straight away when editing an in-between angle.
-    _advancedOpen = _angle != 0 && _angle != 90;
   }
 
   static int _secondsOf(TimeOfDay t) => t.hour * 3600 + t.minute * 60;
@@ -127,8 +125,6 @@ class _ScheduleEntrySheetState extends State<_ScheduleEntrySheet> {
   @override
   Widget build(BuildContext context) {
     final bool isEditing = widget.initial != null;
-    final int a = _angle.round();
-
     return Padding(
       padding: EdgeInsets.fromLTRB(
         18,
@@ -233,32 +229,8 @@ class _ScheduleEntrySheetState extends State<_ScheduleEntrySheet> {
 
             // ── Valve ──
             const _Label('Valve'),
-            Row(
-              children: [
-                Expanded(
-                  child: _AngleChoice(
-                    label: 'Close',
-                    sub: '0°',
-                    selected: a == 0,
-                    onTap: () => setState(() => _angle = 0),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _AngleChoice(
-                    label: 'Open',
-                    sub: '90°',
-                    selected: a == 90,
-                    onTap: () => setState(() => _angle = 90),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            _AdvancedAngle(
-              open: _advancedOpen,
+            ValveAnglePicker(
               angle: _angle,
-              onToggle: () => setState(() => _advancedOpen = !_advancedOpen),
               onChanged: (v) => setState(() => _angle = v),
             ),
             const SizedBox(height: 16),
@@ -531,199 +503,6 @@ class _HmsWheelsState extends State<_HmsWheels> {
           _wheel('MINUTES', 60, _m, widget.onMinute),
           sep,
           _wheel('SECONDS', 60, _s, widget.onSecond),
-        ],
-      ),
-    );
-  }
-}
-
-class _AngleChoice extends StatelessWidget {
-  final String label;
-  final String sub;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _AngleChoice({
-    required this.label,
-    required this.sub,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final Color fg = selected ? GlassTokens.water : GlassTokens.textPrimary;
-    return Semantics(
-      selected: selected,
-      button: true,
-      child: Material(
-        color: selected ? GlassTokens.waterSoft : GlassTokens.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(GlassTokens.radiusMd),
-          side: BorderSide(
-            color: selected ? GlassTokens.water : GlassTokens.border,
-            width: 1.5,
-          ),
-        ),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(GlassTokens.radiusMd),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 11),
-            child: Column(
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: fg,
-                  ),
-                ),
-                Text(
-                  sub,
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w700,
-                    color: selected ? fg : GlassTokens.textMuted,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _AdvancedAngle extends StatelessWidget {
-  final bool open;
-  final double angle;
-  final VoidCallback onToggle;
-  final ValueChanged<double> onChanged;
-
-  const _AdvancedAngle({
-    required this.open,
-    required this.angle,
-    required this.onToggle,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final int a = angle.round();
-    final bool between = a != 0 && a != 90;
-    return Container(
-      decoration: BoxDecoration(
-        border: Border.all(color: GlassTokens.border),
-        borderRadius: BorderRadius.circular(GlassTokens.radiusSm + 2),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: [
-          InkWell(
-            onTap: onToggle,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-              child: Row(
-                children: [
-                  const Icon(Icons.tune_rounded,
-                      size: 18, color: GlassTokens.textSecondary),
-                  const SizedBox(width: 10),
-                  const Expanded(
-                    child: Text(
-                      'Advanced',
-                      style: TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w800,
-                        color: GlassTokens.textPrimary,
-                      ),
-                    ),
-                  ),
-                  if (between)
-                    Text(
-                      '$a°',
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                        color: GlassTokens.water,
-                      ),
-                    ),
-                  const SizedBox(width: 4),
-                  AnimatedRotation(
-                    turns: open ? 0.5 : 0,
-                    duration: const Duration(milliseconds: 200),
-                    child: const Icon(Icons.keyboard_arrow_down_rounded,
-                        color: GlassTokens.textSecondary),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          AnimatedSize(
-            duration: const Duration(milliseconds: 200),
-            alignment: Alignment.topCenter,
-            child: !open
-                ? const SizedBox(width: double.infinity)
-                : Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-                    child: Column(
-                      children: [
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.baseline,
-                          textBaseline: TextBaseline.alphabetic,
-                          children: [
-                            Text(
-                              '$a°',
-                              style: const TextStyle(
-                                fontFamily: GlassTokens.displayFont,
-                                fontSize: 24,
-                                fontWeight: FontWeight.w800,
-                                color: GlassTokens.water,
-                              ),
-                            ),
-                            const Spacer(),
-                            Text(
-                              a == 0
-                                  ? 'Closed'
-                                  : a == 90
-                                      ? 'Fully open'
-                                      : 'Partly open',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: GlassTokens.textMuted,
-                              ),
-                            ),
-                          ],
-                        ),
-                        Slider(
-                          value: angle,
-                          min: 0,
-                          max: 90,
-                          divisions: 18, // 5° steps, as before
-                          label: '$a°',
-                          activeColor: GlassTokens.water,
-                          onChanged: onChanged,
-                        ),
-                        const Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text('0° closed',
-                                style: TextStyle(
-                                    fontSize: 11,
-                                    color: GlassTokens.textMuted)),
-                            Text('90° open',
-                                style: TextStyle(
-                                    fontSize: 11,
-                                    color: GlassTokens.textMuted)),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-          ),
         ],
       ),
     );

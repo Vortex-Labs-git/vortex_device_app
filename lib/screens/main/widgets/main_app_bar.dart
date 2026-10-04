@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../utils/constants.dart';
+import '../../../theme/glass_theme.dart';
 import '../../../widgets/glass/glass.dart';
 
 // =============================================================================
@@ -31,6 +32,7 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
   Widget build(BuildContext context) {
     return GlassAppBar(
       title: AppStrings.appName,
+      backgroundColor: GlassTokens.forest,
       actions: [
         Padding(
           padding: const EdgeInsets.only(right: 12),

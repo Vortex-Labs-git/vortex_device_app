@@ -34,4 +34,5 @@ export 'glass_scaffold.dart';
 export 'glass_surface.dart';
 export 'forest_header.dart';
 export 'segmented_picker.dart';
+export 'settings_list.dart';
 export 'status_tag.dart';

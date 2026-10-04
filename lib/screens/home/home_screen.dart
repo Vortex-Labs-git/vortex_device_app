@@ -111,17 +111,17 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _onDeviceTap(Device device) {
-    // Smart plugs are cloud-only for now: no direct (AP) screen, and the same
-    // screen for online and offline (it locks manual control when offline).
+    // Smart plugs: one screen for online and offline (it locks manual control
+    // when offline). On the plug's hotspot it opens in direct mode — UI only
+    // until the plug firmware's direct messages are wired (TODO(plug-direct)).
     if (device.isPlug) {
-      if (device.status == DeviceStatus.espConnected) {
-        _showSnackBar('Direct control is not available for smart plugs yet');
-        return;
-      }
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => PlugDetailScreen(deviceData: device.raw),
+          builder: (context) => PlugDetailScreen(
+            deviceData: device.raw,
+            isDirectMode: device.status == DeviceStatus.espConnected,
+          ),
         ),
       );
       return;

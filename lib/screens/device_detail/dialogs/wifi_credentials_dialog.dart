@@ -12,6 +12,10 @@ import '../../../utils/app_log.dart';
 // ESP32. Architecture Doc Page 13. The ESP32 restarts afterwards, so the direct
 // connection is expected to drop right after sending.
 //
+// [isSmartPlug] shows the same sheet for a plug in direct mode. The plug's
+// Wi-Fi message is not defined yet, so it does not send anything — see
+// TODO(plug-direct).
+//
 // [isSensorUnit] reuses the same sheet for the sensor unit, which has its own
 // event: set_device_wifi (EspDirectService.setSensorUnitWifi). Only the event
 // and the device word in the texts change.
@@ -27,8 +31,13 @@ const Duration _restartGrace = Duration(seconds: 3);
 Future<void> showWifiCredentialsDialog(
   BuildContext context, {
   bool isSensorUnit = false,
+  bool isSmartPlug = false,
 }) {
-  final String device = isSensorUnit ? 'sensor unit' : 'valve';
+  final String device = isSmartPlug
+      ? 'smart plug'
+      : isSensorUnit
+          ? 'sensor unit'
+          : 'valve';
   final ssidController = TextEditingController();
   final passwordController = TextEditingController();
   bool obscurePassword = true;
@@ -63,6 +72,15 @@ Future<void> showWifiCredentialsDialog(
 
           if (ssid.isEmpty) {
             showMessage('Please enter WiFi name');
+            return;
+          }
+
+          // TODO(plug-direct): send the plug's Wi-Fi message once defined.
+          if (isSmartPlug) {
+            showMessage(
+              'Wi-Fi setup for smart plugs needs the plug firmware update',
+              color: GlassTokens.warning,
+            );
             return;
           }
 

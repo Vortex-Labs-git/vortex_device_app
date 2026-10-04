@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -5,6 +7,7 @@ import '../../controllers/device_repository.dart';
 import '../../models/smart_plug.dart';
 import '../../models/valve_device.dart' show SensorReading;
 import '../../services/auth_service.dart';
+import '../../services/esp_direct_service.dart';
 import '../../services/plug_control_api.dart';
 import '../../theme/glass_theme.dart';
 import '../../utils/app_log.dart';
@@ -17,6 +20,7 @@ import 'controllers/plug_feed.dart';
 // Dialogs
 import 'dialogs/edit_device_name_dialog.dart';
 import 'dialogs/plug_schedule_dialogs.dart';
+import 'dialogs/wifi_credentials_dialog.dart';
 import 'dialogs/sensor_dialogs.dart'
     show showAddSensorFlow, showPlugSensorRuleDialog, showRemoveSensorDialog;
 
@@ -24,6 +28,7 @@ import 'dialogs/sensor_dialogs.dart'
 import 'utils/valve_utils.dart' show isDeviceOnline;
 
 // Card widgets
+import 'widgets/change_wifi_button.dart';
 import 'widgets/control_tabs.dart';
 import 'widgets/plug_manual_card.dart';
 import 'widgets/plug_schedule_card.dart';
@@ -54,7 +59,14 @@ import 'widgets/valve_header.dart';
 // Everything from 3 down belongs to the SELECTED base. Each base keeps its own
 // UI state (automate switch, control-by choice, pending command).
 //
-// Cloud only: live data via PlugServerFeed, commands via PlugControlApi.
+// Cloud: live data via PlugServerFeed, commands via PlugControlApi.
+//
+// DIRECT MODE (isDirectMode, phone on the plug's own hotspot) — UI only for
+// now: gold header, socket cards, a note that only ON / OFF works here, the
+// power button and Device tools (Change Wi-Fi). The plug firmware's direct
+// messages are not defined yet, so there is no live data (the cards show the
+// home-list row) and ON / OFF and Wi-Fi say they need the firmware update.
+// See TODO(plug-direct). The link state comes from EspDirectService.
 // =============================================================================
 
 class PlugDetailScreen extends StatefulWidget {
@@ -62,7 +74,14 @@ class PlugDetailScreen extends StatefulWidget {
   /// draw the info card until the first device_basic_detail push lands.
   final Map<String, dynamic> deviceData;
 
-  const PlugDetailScreen({super.key, required this.deviceData});
+  /// Phone is on the plug's hotspot (no cloud). See the header comment.
+  final bool isDirectMode;
+
+  const PlugDetailScreen({
+    super.key,
+    required this.deviceData,
+    this.isDirectMode = false,
+  });
 
   @override
   State<PlugDetailScreen> createState() => _PlugDetailScreenState();
@@ -127,11 +146,13 @@ class _PlugDetailScreenState extends State<PlugDetailScreen> {
 
   // -- Controllers --
   late final PlugConfirmationController _confirmation;
-  late final PlugServerFeed _feed;
+  PlugServerFeed? _feed; // cloud only
+  StreamSubscription<bool>? _espConnectionSub; // direct only
 
   // -- Shortcuts --
   PlugBase get _base => _plug.base(_selected);
   bool get _isOnline => isDeviceOnline(_plug.lastSeen);
+  bool get _isDirectMode => widget.isDirectMode;
 
   // ===========================================================================
   // SECTION 2: LIFECYCLE
@@ -159,7 +180,21 @@ class _PlugDetailScreenState extends State<PlugDetailScreen> {
       ),
     );
 
-    _feed = PlugServerFeed(
+    // Direct mode must not touch the cloud WebSocket. Only the ESP link
+    // state is followed; there is no plug data feed over it yet.
+    if (_isDirectMode) {
+      final esp = EspDirectService.instance;
+      _hasDetail = true; // show the home-list row; nothing else is coming
+      _wsConnected = esp.isConnected;
+      _espConnectionSub = esp.connectionStream.listen((connected) {
+        if (mounted) setState(() => _wsConnected = connected);
+      });
+      // TODO(plug-direct): request the plug's status here and poll it, once
+      // the firmware messages are defined.
+      return;
+    }
+
+    final feed = PlugServerFeed(
       deviceId: _plug.id,
       onConnectionChanged: (connected) {
         if (mounted) setState(() => _wsConnected = connected);
@@ -167,13 +202,15 @@ class _PlugDetailScreenState extends State<PlugDetailScreen> {
       onPlugUpdate: _onPlugUpdate,
       onControlUpdate: _onControlUpdate,
     );
-    _wsConnected = _feed.isConnected;
-    _feed.start();
+    _feed = feed;
+    _wsConnected = feed.isConnected;
+    feed.start();
   }
 
   @override
   void dispose() {
-    _feed.dispose();
+    _feed?.dispose();
+    _espConnectionSub?.cancel();
     _confirmation.dispose();
     super.dispose();
   }
@@ -593,6 +630,11 @@ class _PlugDetailScreenState extends State<PlugDetailScreen> {
   // ===========================================================================
 
   Future<void> _editPlugName() async {
+    if (_isDirectMode) {
+      _showMessage('Renaming needs the plug online through your Wi-Fi',
+          duration: const Duration(seconds: 2));
+      return;
+    }
     // set_plug_basic resends every base; until the first push we don't know
     // them yet (see SmartPlug.toBasicJson).
     if (!_hasDetail) {
@@ -620,6 +662,11 @@ class _PlugDetailScreenState extends State<PlugDetailScreen> {
   }
 
   Future<void> _editBaseName() async {
+    if (_isDirectMode) {
+      _showMessage('Renaming needs the plug online through your Wi-Fi',
+          duration: const Duration(seconds: 2));
+      return;
+    }
     final id = _selected;
     final newName = await showEditDeviceNameDialog(
       context,
@@ -669,7 +716,8 @@ class _PlugDetailScreenState extends State<PlugDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final bool isOnline = _isOnline;
-    final String? activeCard = _hasDetail ? _activeCardOf(isOnline) : null;
+    final String? activeCard =
+        _hasDetail && !_isDirectMode ? _activeCardOf(isOnline) : null;
     final PlugBaseId id = _selected;
     final double topInset = MediaQuery.paddingOf(context).top;
 
@@ -708,7 +756,7 @@ class _PlugDetailScreenState extends State<PlugDetailScreen> {
                 deviceId: _plug.id,
                 productType: _headerDetails(),
                 isOnline: isOnline,
-                isDirectMode: false,
+                isDirectMode: _isDirectMode,
                 linkConnected: _wsConnected,
                 onEditName: _editPlugName,
                 productLine: 'Smart plug',
@@ -720,7 +768,9 @@ class _PlugDetailScreenState extends State<PlugDetailScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    if (activeCard == null)
+                    if (_isDirectMode)
+                      ..._buildDirectSection()
+                    else if (activeCard == null)
                       _buildLoading()
                     else
                       ..._buildBaseSection(isOnline, activeCard),
@@ -768,6 +818,165 @@ class _PlugDetailScreenState extends State<PlugDetailScreen> {
             : _controlModeOf(base.id);
     if (!isOnline && activeCard == 'manual') activeCard = 'schedule';
     return activeCard;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Direct mode (UI only — see the header comment)
+  // ---------------------------------------------------------------------------
+
+  /// Sockets as the home-list row has them. A row without socket names still
+  /// gets "Socket A" so the card reads well.
+  List<PlugBase> get _directBases => [
+        for (final b in _plug.bases)
+          b.name.isNotEmpty ? b : b.copyWith(name: 'Socket ${b.id.letter}'),
+      ];
+
+  List<Widget> _buildDirectSection() {
+    final bases = _directBases;
+    final PlugBase base = bases.firstWhere(
+      (b) => b.id == _selected,
+      orElse: () => bases.first,
+    );
+    final bool linkUp = _wsConnected;
+
+    return [
+      PlugSocketCards(
+        bases: bases,
+        selected: base.id,
+        isOffline: !linkUp,
+        onSelected: (id) => setState(() => _selected = id),
+        onEditName: _editBaseName,
+      ),
+      const SizedBox(height: 14),
+      linkUp ? _directNote() : _linkLostNote(),
+      const SizedBox(height: 14),
+      // Locked while the link is down.
+      IgnorePointer(
+        ignoring: !linkUp,
+        child: Opacity(
+          opacity: linkUp ? 1 : 0.5,
+          child: PlugManualCard(
+            base: base,
+            isUpdating: false,
+            waitingForConfirmation: false,
+            pendingState: null,
+            confirmationCountdown: 0,
+            onToggle: _switchBaseDirect,
+          ),
+        ),
+      ),
+      const SizedBox(height: 14),
+      GlassCard(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Device tools',
+              style: TextStyle(
+                fontFamily: GlassTokens.displayFont,
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: GlassTokens.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 4),
+            ChangeWifiButton(
+              onPressed: () =>
+                  showWifiCredentialsDialog(context, isSmartPlug: true),
+              subtitle: 'Send your farm Wi-Fi to the plug',
+            ),
+          ],
+        ),
+      ),
+    ];
+  }
+
+  // TODO(plug-direct): send the per-socket ON / OFF command over the ESP link
+  // and wait for the plug's reply (same confirmation flow as the cloud).
+  void _switchBaseDirect(bool on) {
+    _showMessage(
+      'Direct ON / OFF needs the plug firmware update',
+      color: GlassTokens.warning,
+      duration: const Duration(seconds: 3),
+    );
+  }
+
+  Widget _directNote() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: GlassTokens.goldSoft,
+        borderRadius: BorderRadius.circular(GlassTokens.radiusMd),
+      ),
+      child: const Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline_rounded,
+              size: 18, color: GlassTokens.onGold),
+          SizedBox(width: 8),
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: 'Direct link: only ON / OFF works here\n',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  TextSpan(
+                    text: 'Schedules and sensor rules need the plug online '
+                        'through your Wi-Fi.',
+                  ),
+                ],
+              ),
+              style: TextStyle(
+                fontSize: 12.5,
+                height: 1.4,
+                color: GlassTokens.onGold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _linkLostNote() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: GlassTokens.danger.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(GlassTokens.radiusSm),
+      ),
+      child: const Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline_rounded,
+              size: 18, color: GlassTokens.danger),
+          SizedBox(width: 8),
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: 'Direct link lost · ',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  TextSpan(
+                    text: "reconnect to the plug's Wi-Fi hotspot to switch it.",
+                  ),
+                ],
+              ),
+              style: TextStyle(
+                fontSize: 12.5,
+                height: 1.4,
+                color: GlassTokens.danger,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   /// Until the first device_basic_detail push we don't know the sockets yet.

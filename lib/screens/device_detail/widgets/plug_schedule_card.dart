@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../models/smart_plug.dart';
 import '../../../theme/glass_theme.dart';
 import '../../../widgets/glass/glass.dart';
+import 'tinted_add_button.dart';
 import '../utils/plug_utils.dart';
 
 // =============================================================================
@@ -19,8 +20,8 @@ import '../utils/plug_utils.dart';
 // Every card is an ON period — the socket is OFF outside all of them — so
 // there is no ON/OFF column.
 //
-// SAVING IS SEPARATE: the parent pins ScheduleSaveBar to the bottom of the
-// screen and passes it [isSaving] / [hasUnsavedChanges] / [onSavePressed];
+// SAVING IS SEPARATE: the parent floats a Save pill (FloatingSavePill) at the
+// bottom of the screen and passes it [isSaving] / [hasUnsavedChanges] / [onSavePressed];
 // this card only edits the list through the callbacks. The selected day is
 // the only state here, and it is view-only.
 // =============================================================================
@@ -30,13 +31,13 @@ class PlugScheduleCard extends StatefulWidget {
   final List<PlugScheduleEntry> schedules;
   final bool isSaving;
 
-  /// Shown by the save bar, not here; kept so the parent wiring is unchanged.
+  /// Shown by the Save pill, not here; kept so the parent wiring is unchanged.
   final bool hasUnsavedChanges;
   final VoidCallback onAddPressed;
   final ValueChanged<int> onRowTapped; // tap a row to edit it
   final ValueChanged<int> onRowDeleted;
 
-  /// Used by the save bar the parent pins below the screen.
+  /// Used by the Save pill the parent floats at the bottom of the screen.
   final VoidCallback onSavePressed;
 
   const PlugScheduleCard({
@@ -160,7 +161,10 @@ class _PlugScheduleCardState extends State<PlugScheduleCard> {
           ),
 
         const SizedBox(height: 2),
-        _AddButton(onPressed: locked ? null : widget.onAddPressed),
+        TintedAddButton(
+          label: 'Add time',
+          onPressed: locked ? null : widget.onAddPressed,
+        ),
       ],
     );
   }
@@ -318,45 +322,6 @@ class _TimeCard extends StatelessWidget {
             onPressed: locked ? null : onDelete,
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _AddButton extends StatelessWidget {
-  final VoidCallback? onPressed;
-
-  const _AddButton({required this.onPressed});
-
-  @override
-  Widget build(BuildContext context) {
-    return Opacity(
-      opacity: onPressed == null ? 0.5 : 1,
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(GlassTokens.radiusMd),
-        child: Container(
-          height: GlassTokens.touchTarget,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(GlassTokens.radiusMd),
-            border: Border.all(color: GlassTokens.border, width: 1.5),
-          ),
-          child: const Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.add_rounded, color: GlassTokens.primary, size: 20),
-              SizedBox(width: 6),
-              Text(
-                'Add time',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  color: GlassTokens.primary,
-                ),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }

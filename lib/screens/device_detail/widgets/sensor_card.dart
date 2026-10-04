@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../models/valve_device.dart';
 import '../../../theme/glass_theme.dart';
 import '../../../widgets/glass/glass.dart';
+import 'tinted_add_button.dart';
 
 // =============================================================================
 // SENSOR CARD  (UI v2)
@@ -19,8 +20,8 @@ import '../../../widgets/glass/glass.dart';
 //   2. RULES       one card per "reading range → valve angle". The rule that
 //                  matches the current reading is marked "In use now".
 //
-// Saving is separate, as on the schedule tab: the parent pins a save bar to
-// the bottom of the screen (ScheduleSaveBar). View only — dialogs, validation
+// Saving is separate, as on the schedule tab: the parent floats a Save pill
+// (FloatingSavePill) at the bottom of the screen. View only — dialogs, validation
 // and the save call live in DeviceDetailScreen and arrive as callbacks.
 // =============================================================================
 
@@ -138,7 +139,7 @@ class SensorCard extends StatelessWidget {
           ),
 
         const SizedBox(height: 2),
-        _DashedButton(label: 'Add rule', onPressed: onAddPressed),
+        TintedAddButton(label: 'Add rule', onPressed: onAddPressed),
       ],
     );
   }
@@ -472,43 +473,6 @@ class _RuleCard extends StatelessWidget {
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _DashedButton extends StatelessWidget {
-  final String label;
-  final VoidCallback onPressed;
-
-  const _DashedButton({required this.label, required this.onPressed});
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onPressed,
-      borderRadius: BorderRadius.circular(GlassTokens.radiusMd),
-      child: Container(
-        height: GlassTokens.touchTarget,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(GlassTokens.radiusMd),
-          border: Border.all(color: GlassTokens.border, width: 1.5),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.add_rounded, color: GlassTokens.primary, size: 20),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w800,
-                color: GlassTokens.primary,
-              ),
-            ),
-          ],
         ),
       ),
     );

@@ -35,7 +35,7 @@ import 'widgets/plug_schedule_card.dart';
 import 'widgets/plug_sensor_card.dart';
 import 'widgets/plug_socket_cards.dart';
 import 'widgets/runs_on_card.dart';
-import 'widgets/schedule_card.dart' show ScheduleSaveBar;
+import 'widgets/save_pill.dart';
 import 'widgets/valve_header.dart';
 
 // =============================================================================
@@ -52,9 +52,9 @@ import 'widgets/valve_header.dart';
 //   4  ControlTabs           Control · Schedule · Sensor rules
 //   5  PlugManualCard        big power button
 //      PlugScheduleCard      week strip + time cards (+ step cycle); the
-//                            Save bar is pinned to the bottom
+//                            Save pill floats at the bottom
 //      PlugSensorCard        the socket's own sensor + ON/OFF rules; the
-//                            Save bar is pinned to the bottom
+//                            Save pill floats at the bottom
 //
 // Everything from 3 down belongs to the SELECTED base. Each base keeps its own
 // UI state (automate switch, control-by choice, pending command).
@@ -711,7 +711,7 @@ class _PlugDetailScreenState extends State<PlugDetailScreen> {
   // ===========================================================================
   // Forest header (same band as the valve) → socket cards → "<socket> runs
   // on" (online only) → Control · Schedule · Sensor rules tabs → the card for
-  // the active tab. The schedule's Save bar is pinned to the bottom.
+  // the active tab. A Save pill floats up when there is something to save.
 
   @override
   Widget build(BuildContext context) {
@@ -721,33 +721,35 @@ class _PlugDetailScreenState extends State<PlugDetailScreen> {
     final PlugBaseId id = _selected;
     final double topInset = MediaQuery.paddingOf(context).top;
 
+    // 8.7  Save pill — separate from the lists; floats up only while there is
+    //      something to save on the active tab (per socket).
+    final FloatingSavePill? savePill = activeCard == 'schedule'
+        ? FloatingSavePill(
+            hasUnsavedChanges: _schedulesEdited.contains(id),
+            isSaving: _savingSchedule.contains(id),
+            onSavePressed: _saveSchedule,
+          )
+        : activeCard == 'sensor' && _controlOf(id).sensor != null
+            ? FloatingSavePill(
+                hasUnsavedChanges: _sensorRulesEdited.contains(id),
+                isSaving: _savingSensor.contains(id),
+                onSavePressed: _saveSensorRules,
+              )
+            : null;
+
     return GlassScaffold(
       // The forest header draws behind the status bar itself.
       useSafeArea: false,
-
-      // 8.7  Save bars — separate from the lists, pinned to the bottom
-      bottomNavigationBar: activeCard == 'schedule'
-          ? ScheduleSaveBar(
-              hasUnsavedChanges: _schedulesEdited.contains(id),
-              isSaving: _savingSchedule.contains(id),
-              onSavePressed: _saveSchedule,
-              savedText: 'Saved on the plug',
-            )
-          : activeCard == 'sensor' && _controlOf(id).sensor != null
-              ? ScheduleSaveBar(
-                  hasUnsavedChanges: _sensorRulesEdited.contains(id),
-                  isSaving: _savingSensor.contains(id),
-                  onSavePressed: _saveSensorRules,
-                  saveLabel: 'Save sensor rules',
-                  savedText: 'Saved on the plug',
-                )
-              : null,
 
       body: Stack(
         children: [
           ListView(
             padding: EdgeInsets.only(
-              bottom: 16 + MediaQuery.paddingOf(context).bottom,
+              bottom: 16 +
+                  MediaQuery.paddingOf(context).bottom +
+                  (savePill?.visible == true
+                      ? FloatingSavePill.reservedHeight
+                      : 0),
             ),
             children: [
               // 8.1  Device header (replaces the app bar + DeviceInfoCard)
@@ -779,6 +781,8 @@ class _PlugDetailScreenState extends State<PlugDetailScreen> {
               ),
             ],
           ),
+
+          if (savePill != null) savePill,
 
           // Forest strip behind the status bar, so the clock and battery stay
           // on green (with light icons) after the header scrolls away.

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../models/valve_device.dart';
 import '../../../theme/glass_theme.dart';
 import '../../../widgets/glass/glass.dart';
+import 'tinted_add_button.dart';
 
 // =============================================================================
 // SCHEDULE CARD  (UI v2)
@@ -19,9 +20,9 @@ import '../../../widgets/glass/glass.dart';
 // they line up with the add/edit sheet.
 //
 // SAVING IS SEPARATE: this card never saves. Edits change the list in the
-// parent only; [ScheduleSaveBar] (below) sends the whole list, and the parent
-// pins it to the bottom of the screen. All dialogs and the REST call live in
-// the parent and arrive as callbacks — same split as before. The selected day
+// parent only; the parent's floating Save pill (FloatingSavePill) sends the
+// whole list. All dialogs and the REST call live in the parent and arrive as
+// callbacks — same split as before. The selected day
 // is the only state here, and it is view-only.
 // =============================================================================
 
@@ -155,86 +156,9 @@ class _ScheduleCardState extends State<ScheduleCard> {
 
         if (!widget.readOnly) ...[
           const SizedBox(height: 2),
-          _AddSlotButton(onPressed: widget.onAddPressed),
+          TintedAddButton(label: 'Add slot', onPressed: widget.onAddPressed),
         ],
       ],
-    );
-  }
-}
-
-// -----------------------------------------------------------------------------
-// Save bar — pinned to the bottom of the screen by the parent.
-// -----------------------------------------------------------------------------
-
-class ScheduleSaveBar extends StatelessWidget {
-  final bool hasUnsavedChanges;
-  final bool isSaving;
-  final VoidCallback onSavePressed;
-
-  /// Button label. The sensor rules tab reuses this bar.
-  final String saveLabel;
-
-  /// Shown when nothing is waiting to be saved. The plug screen reuses this
-  /// bar.
-  final String savedText;
-
-  const ScheduleSaveBar({
-    super.key,
-    required this.hasUnsavedChanges,
-    required this.isSaving,
-    required this.onSavePressed,
-    this.saveLabel = 'Save schedule',
-    this.savedText = 'Saved on the valve',
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.fromLTRB(
-          14, 10, 14, 10 + MediaQuery.paddingOf(context).bottom),
-      decoration: BoxDecoration(
-        color: GlassTokens.surface,
-        border: const Border(top: BorderSide(color: GlassTokens.border)),
-        boxShadow: GlassTokens.paneShadow(y: -2, blurRadius: 6),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: hasUnsavedChanges
-                ? Align(
-                    alignment: Alignment.centerLeft,
-                    heightFactor: 1,
-                    // Shrinks rather than overflow beside a long button label
-                    // on a narrow phone.
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: StatusTag(
-                        label: 'Unsaved changes',
-                        color: GlassTokens.sun,
-                        icon: Icons.edit_outlined,
-                        background: GlassTokens.sunSoft,
-                      ),
-                    ),
-                  )
-                : Text(
-                    savedText,
-                    style: const TextStyle(
-                      fontSize: 12.5,
-                      color: GlassTokens.textMuted,
-                    ),
-                  ),
-          ),
-          GlassButton(
-            label: isSaving ? 'Saving…' : saveLabel,
-            icon: Icons.save_outlined,
-            fullWidth: false,
-            height: 48,
-            isLoading: isSaving,
-            onPressed: isSaving ? null : onSavePressed,
-          ),
-        ],
-      ),
     );
   }
 }
@@ -411,42 +335,6 @@ class _SlotCard extends StatelessWidget {
           else
             const SizedBox(width: 12),
         ],
-      ),
-    );
-  }
-}
-
-class _AddSlotButton extends StatelessWidget {
-  final VoidCallback onPressed;
-
-  const _AddSlotButton({required this.onPressed});
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onPressed,
-      borderRadius: BorderRadius.circular(GlassTokens.radiusMd),
-      child: Container(
-        height: GlassTokens.touchTarget,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(GlassTokens.radiusMd),
-          border: Border.all(color: GlassTokens.border, width: 1.5),
-        ),
-        child: const Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.add_rounded, color: GlassTokens.primary, size: 20),
-            SizedBox(width: 6),
-            Text(
-              'Add slot',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w800,
-                color: GlassTokens.primary,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

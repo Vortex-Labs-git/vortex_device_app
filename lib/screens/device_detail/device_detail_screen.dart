@@ -31,6 +31,7 @@ import 'widgets/change_wifi_button.dart';
 import 'widgets/control_tabs.dart';
 import 'widgets/motor_calibration_button.dart';
 import 'widgets/runs_on_card.dart';
+import 'widgets/save_pill.dart';
 import 'widgets/schedule_card.dart';
 import 'widgets/sensor_card.dart';
 import 'widgets/valve_control_card.dart';
@@ -790,31 +791,35 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
 
     final double topInset = MediaQuery.paddingOf(context).top;
 
+    // 9.8  Save pill — separate from the lists; floats up only while there is
+    //      something to save on the active tab.
+    final FloatingSavePill? savePill = activeCard == 'schedule'
+        ? FloatingSavePill(
+            hasUnsavedChanges: _schedulesLocallyEdited,
+            isSaving: _isSavingSchedule,
+            onSavePressed: _saveSchedule,
+          )
+        : activeCard == 'sensor' && _sensorReading != null
+            ? FloatingSavePill(
+                hasUnsavedChanges: _sensorRulesLocallyEdited,
+                isSaving: _isSavingSensorRules,
+                onSavePressed: _saveSensorRules,
+              )
+            : null;
+
     return GlassScaffold(
       // The forest header draws behind the status bar itself.
       useSafeArea: false,
-
-      // 9.8  Save bars — separate from the lists, pinned to the bottom
-      bottomNavigationBar: activeCard == 'schedule'
-          ? ScheduleSaveBar(
-              hasUnsavedChanges: _schedulesLocallyEdited,
-              isSaving: _isSavingSchedule,
-              onSavePressed: _saveSchedule,
-            )
-          : activeCard == 'sensor' && _sensorReading != null
-              ? ScheduleSaveBar(
-                  hasUnsavedChanges: _sensorRulesLocallyEdited,
-                  isSaving: _isSavingSensorRules,
-                  onSavePressed: _saveSensorRules,
-                  saveLabel: 'Save sensor rules',
-                )
-              : null,
 
       body: Stack(
         children: [
           ListView(
             padding: EdgeInsets.only(
-              bottom: 16 + MediaQuery.paddingOf(context).bottom,
+              bottom: 16 +
+                  MediaQuery.paddingOf(context).bottom +
+                  (savePill?.visible == true
+                      ? FloatingSavePill.reservedHeight
+                      : 0),
             ),
             children: [
               // 9.1  Device header (replaces the app bar + DeviceInfoCard)
@@ -979,6 +984,8 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
               ),
             ],
           ),
+
+          if (savePill != null) savePill,
 
           // Forest strip behind the status bar, so the clock and battery stay
           // on green (with light icons) after the header scrolls away.

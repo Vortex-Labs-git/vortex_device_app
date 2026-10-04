@@ -6,6 +6,7 @@ import '../../../models/smart_plug.dart';
 import '../../../models/valve_device.dart';
 import '../../../theme/glass_theme.dart';
 import '../../../widgets/glass/glass.dart';
+import 'tinted_add_button.dart';
 
 // =============================================================================
 // PLUG SENSOR CARD  (UI v2)
@@ -20,8 +21,8 @@ import '../../../widgets/glass/glass.dart';
 //                  that matches the current reading is marked "In use now".
 //
 // Each socket of a dual plug has its own sensor and rules; the parent passes
-// the selected socket's. Saving is separate: the parent pins a save bar to the
-// bottom of the screen. View only — dialogs, validation and the save call live
+// the selected socket's. Saving is separate: the parent floats a Save pill
+// (FloatingSavePill) at the bottom of the screen. View only — dialogs, validation and the save call live
 // in PlugDetailScreen and arrive as callbacks.
 // =============================================================================
 
@@ -142,7 +143,7 @@ class PlugSensorCard extends StatelessWidget {
           ),
 
         const SizedBox(height: 2),
-        _DashedButton(label: 'Add rule', onPressed: onAddPressed),
+        TintedAddButton(label: 'Add rule', onPressed: onAddPressed),
       ],
     );
   }
@@ -466,43 +467,6 @@ class _RuleCard extends StatelessWidget {
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _DashedButton extends StatelessWidget {
-  final String label;
-  final VoidCallback onPressed;
-
-  const _DashedButton({required this.label, required this.onPressed});
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onPressed,
-      borderRadius: BorderRadius.circular(GlassTokens.radiusMd),
-      child: Container(
-        height: GlassTokens.touchTarget,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(GlassTokens.radiusMd),
-          border: Border.all(color: GlassTokens.border, width: 1.5),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.add_rounded, color: GlassTokens.primary, size: 20),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w800,
-                color: GlassTokens.primary,
-              ),
-            ),
-          ],
         ),
       ),
     );

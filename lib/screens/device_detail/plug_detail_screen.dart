@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../models/smart_plug.dart';
 import '../../services/plug_control_api.dart';
@@ -18,14 +19,13 @@ import 'dialogs/plug_schedule_dialogs.dart';
 import 'utils/valve_utils.dart' show isDeviceOnline;
 
 // Card widgets
-import 'widgets/control_mode_card.dart';
-import 'widgets/device_app_bar.dart';
-import 'widgets/device_info_card.dart';
-import 'widgets/mode_toggle_card.dart';
-import 'widgets/plug_base_header_card.dart';
-import 'widgets/plug_base_selector.dart';
+import 'widgets/control_tabs.dart';
 import 'widgets/plug_manual_card.dart';
 import 'widgets/plug_schedule_card.dart';
+import 'widgets/plug_socket_cards.dart';
+import 'widgets/runs_on_card.dart';
+import 'widgets/schedule_card.dart' show ScheduleSaveBar;
+import 'widgets/valve_header.dart';
 
 // =============================================================================
 // PLUG DETAIL SCREEN
@@ -33,13 +33,15 @@ import 'widgets/plug_schedule_card.dart';
 // Screen for one smart plug (id "SP…"). Sibling of DeviceDetailScreen (valve)
 // and SensorDetailScreen, built from the same cards where it can be:
 //
-//   1  DeviceInfoCard        product type, plug name + Edit, online state
-//   2  PlugBaseSelector      Base A | Base B (Base B locked on a single plug)
-//   3  PlugBaseHeaderCard    selected base: name + Edit, wattage, ON/OFF
-//   4  ModeToggleCard        Manual / Automate → Schedule, Sensor (per base)
-//   5  ControlModeCard       Control by: manual / schedule / sensor (manual only)
-//   6  PlugManualCard        current state + ON/OFF button
-//      PlugScheduleCard      schedule table of the base (+ step cycle)
+//   1  ValveHeader           photo, plug name + rename, version, online state
+//   2  PlugSocketCards       one card per socket (two on a dual plug, one on
+//                            a single plug): name + rename, ON/OFF, watts
+//   3  RunsOnCard            Manual | Automatic → Schedule, Sensor (per base,
+//                            online only)
+//   4  ControlTabs           Control · Schedule · Sensor rules
+//   5  PlugManualCard        big power button
+//      PlugScheduleCard      week strip + time cards (+ step cycle); the
+//                            Save bar is pinned to the bottom
 //      sensor                placeholder — next step
 //
 // Everything from 3 down belongs to the SELECTED base. Each base keeps its own
@@ -446,47 +448,109 @@ class _PlugDetailScreenState extends State<PlugDetailScreen> {
   }
 
   // ===========================================================================
-  // SECTION 8: BUILD
+  // SECTION 8: BUILD  (UI v2)
   // ===========================================================================
+  // Forest header (same band as the valve) → socket cards → "<socket> runs
+  // on" (online only) → Control · Schedule · Sensor rules tabs → the card for
+  // the active tab. The schedule's Save bar is pinned to the bottom.
 
   @override
   Widget build(BuildContext context) {
     final bool isOnline = _isOnline;
+    final String? activeCard = _hasDetail ? _activeCardOf(isOnline) : null;
+    final PlugBaseId id = _selected;
+    final double topInset = MediaQuery.paddingOf(context).top;
 
     return GlassScaffold(
-      appBar: DeviceAppBar(isDirectMode: false, wsConnected: _wsConnected),
-      body: SingleChildScrollView(
-        padding: EdgeInsets.fromLTRB(
-          16,
-          16,
-          16,
-          16 + MediaQuery.paddingOf(context).bottom,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 8.1  Device info card (same as the valve)
-            DeviceInfoCard(
-              productType: _plug.version.isNotEmpty ? _plug.version : 'Smart Plug',
-              deviceName: _plug.name.isNotEmpty ? _plug.name : 'Unknown',
-              isOnline: isOnline,
-              isDirectMode: false,
-              onEditName: _editPlugName,
+      // The forest header draws behind the status bar itself.
+      useSafeArea: false,
+
+      // 8.7  Save bar — separate from the list, pinned to the bottom
+      bottomNavigationBar: activeCard == 'schedule'
+          ? ScheduleSaveBar(
+              hasUnsavedChanges: _schedulesEdited.contains(id),
+              isSaving: _savingSchedule.contains(id),
+              onSavePressed: _saveSchedule,
+              savedText: 'Saved on the plug',
+            )
+          : null,
+
+      body: Stack(
+        children: [
+          ListView(
+            padding: EdgeInsets.only(
+              bottom: 16 + MediaQuery.paddingOf(context).bottom,
             ),
+            children: [
+              // 8.1  Device header (replaces the app bar + DeviceInfoCard)
+              ValveHeader(
+                deviceName: _plug.name.isNotEmpty ? _plug.name : 'Unknown',
+                deviceId: _plug.id,
+                productType: _headerDetails(),
+                isOnline: isOnline,
+                isDirectMode: false,
+                linkConnected: _wsConnected,
+                onEditName: _editPlugName,
+                productLine: 'Smart plug',
+                imageAsset: 'assets/images/SP_1.jpeg',
+                fallbackIcon: Icons.power_outlined,
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (activeCard == null)
+                      _buildLoading()
+                    else
+                      ..._buildBaseSection(isOnline, activeCard),
+                  ],
+                ),
+              ),
+            ],
+          ),
 
-            const SizedBox(height: 16),
-
-            if (!_hasDetail)
-              _buildLoading()
-            else
-              ..._buildBaseSection(isOnline),
-          ],
-        ),
+          // Forest strip behind the status bar, so the clock and battery stay
+          // on green (with light icons) after the header scrolls away.
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: topInset,
+            child: const AnnotatedRegion<SystemUiOverlayStyle>(
+              value: GlassTokens.systemOverlayOnForest,
+              child: ColoredBox(color: GlassTokens.forest),
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  /// Until the first device_basic_detail push we don't know the bases yet.
+  /// "1.2 · 2 sockets" under the name in the header.
+  String _headerDetails() {
+    final String version =
+        _plug.version.isNotEmpty ? _plug.version : 'Smart plug';
+    if (!_hasDetail) return version;
+    final int n = _plug.bases.length;
+    return '$version · $n socket${n == 1 ? '' : 's'}';
+  }
+
+  /// Which card owns the bottom of the screen — same rule as before: the mode
+  /// flags win, the tab choice only counts in manual mode, and an offline
+  /// plug can't be driven manually.
+  String _activeCardOf(bool isOnline) {
+    final PlugBase base = _base;
+    String activeCard = base.scheduleCtrl
+        ? 'schedule'
+        : base.sensorCtrl
+            ? 'sensor'
+            : _controlModeOf(base.id);
+    if (!isOnline && activeCard == 'manual') activeCard = 'schedule';
+    return activeCard;
+  }
+
+  /// Until the first device_basic_detail push we don't know the sockets yet.
   Widget _buildLoading() {
     return const GlassCard(
       padding: EdgeInsets.symmetric(vertical: 32, horizontal: 16),
@@ -505,40 +569,37 @@ class _PlugDetailScreenState extends State<PlugDetailScreen> {
     );
   }
 
-  List<Widget> _buildBaseSection(bool isOnline) {
+  List<Widget> _buildBaseSection(bool isOnline, String activeCard) {
     final PlugBase base = _base;
     final PlugBaseId id = base.id;
     final bool automate = _automateOf(base);
 
-    // Which card owns the bottom of the screen — same rule as the valve:
-    // the mode flags win, the Control-by choice only counts in manual mode,
-    // and an offline plug can't be driven manually.
-    String activeCard = base.scheduleCtrl
-        ? 'schedule'
-        : base.sensorCtrl
-            ? 'sensor'
-            : _controlModeOf(id);
-    if (!isOnline && activeCard == 'manual') activeCard = 'schedule';
+    // Same lock rules as the valve tabs: while an automation runs only its
+    // card is reachable; offline, manual control is locked.
+    final bool automated = base.isAutomated;
+    final Set<String> lockedTabs = automated
+        ? ({'manual', 'schedule', 'sensor'}..remove(activeCard))
+        : (!isOnline ? {'manual'} : <String>{});
 
     return [
-      // 8.2  Base A | Base B
-      PlugBaseSelector(
+      // 8.2  Sockets: two cards on a dual plug, one on a single plug
+      PlugSocketCards(
+        bases: _plug.bases,
         selected: _selected,
-        baseA: _plug.baseA,
-        baseB: _plug.baseB,
+        isOffline: !isOnline,
         onSelected: (id) => setState(() => _selected = id),
+        onEditName: _editBaseName,
       ),
+      const SizedBox(height: 14),
 
-      const SizedBox(height: 16),
+      if (!isOnline) ...[
+        _offlineNote(),
+        const SizedBox(height: 14),
+      ],
 
-      // 8.3  Selected base: name + state
-      PlugBaseHeaderCard(base: base, onEditName: _editBaseName),
-
-      const SizedBox(height: 16),
-
-      // 8.4  Control method (online only, like the valve)
+      // 8.3  What the socket runs on (online only, like the valve)
       if (isOnline) ...[
-        ModeToggleCard(
+        RunsOnCard(
           isAutomateMode: automate,
           isScheduleMode: base.scheduleCtrl,
           isSensorMode: base.sensorCtrl,
@@ -546,29 +607,27 @@ class _PlugDetailScreenState extends State<PlugDetailScreen> {
           onAutomateChanged: _onAutomateChanged,
           onScheduleChanged: _onScheduleChanged,
           onSensorChanged: _onSensorChanged,
-          subject: 'base',
-          manualSummary: 'You switch the base ON / OFF',
-          scheduleDescription: 'Turn ON / OFF at set times',
+          subject: base.name,
+          manualSummary: 'You switch it ON / OFF',
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 10),
       ],
 
-      // 8.5  Control by — manual only
-      if (!base.isAutomated) ...[
-        ControlModeCard(
-          controlMode: activeCard,
-          isDirectMode: false,
-          isOffline: !isOnline,
-          onModeSelected: (mode) => setState(() => _controlMode[id] = mode),
-          onDisabledTap: (_) => _showMessage(
-            'Manual control needs the plug online',
-            duration: const Duration(seconds: 2),
-          ),
+      // 8.4  Control · Schedule · Sensor rules
+      ControlTabs(
+        selected: activeCard,
+        locked: lockedTabs,
+        onSelected: (mode) => setState(() => _controlMode[id] = mode),
+        onLockedTap: (_) => _showMessage(
+          automated
+              ? 'Switch ${base.name} to Manual to use this'
+              : 'Manual control needs the plug online',
+          duration: const Duration(seconds: 2),
         ),
-        const SizedBox(height: 16),
-      ],
+      ),
+      const SizedBox(height: 14),
 
-      // 8.6  Active card
+      // 8.5  Active card
       if (activeCard == 'manual')
         PlugManualCard(
           base: base,
@@ -590,38 +649,91 @@ class _PlugDetailScreenState extends State<PlugDetailScreen> {
           onSavePressed: _saveSchedule,
         )
       else
-        _placeholder(
-          'Sensor for ${base.name}',
-          _controls[id]?.sensor == null
-              ? 'No sensor linked · editor coming next'
-              : '${_controls[id]!.sensor!.sensorName} · editor coming next',
-        ),
+        _sensorPlaceholder(base),
     ];
   }
 
-  // TODO(plug): replace with PlugSensorCard.
-  Widget _placeholder(String title, String subtitle) {
-    return GlassCard(
-      padding: const EdgeInsets.all(20),
-      child: SizedBox(
-        width: double.infinity,
-        child: Column(
-          children: [
-            Text(
-              title,
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                color: GlassTokens.textSecondary,
+  Widget _offlineNote() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: GlassTokens.danger.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(GlassTokens.radiusSm),
+      ),
+      child: const Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline_rounded,
+              size: 18, color: GlassTokens.danger),
+          SizedBox(width: 8),
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: 'Plug offline · ',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  TextSpan(
+                    text: 'switching needs the plug online. The schedule can '
+                        'still be edited and saved.',
+                  ),
+                ],
+              ),
+              style: TextStyle(
+                fontSize: 12.5,
+                height: 1.4,
+                color: GlassTokens.danger,
               ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              subtitle,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 12, color: GlassTokens.textMuted),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // TODO(plug): replace with PlugSensorCard.
+  Widget _sensorPlaceholder(PlugBase base) {
+    final sensor = _controls[base.id]?.sensor;
+    return GlassCard(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
+      child: Column(
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              color: GlassTokens.info.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(GlassTokens.radiusSm),
             ),
-          ],
-        ),
+            child: const Icon(Icons.sensors_rounded, color: GlassTokens.info),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Sensor rules for ${base.name}',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontFamily: GlassTokens.displayFont,
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: GlassTokens.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            sensor == null
+                ? 'No sensor linked yet. Sensor control for plugs is coming '
+                    'in a later update.'
+                : '${sensor.sensorName} is linked. Sensor rules for plugs are '
+                    'coming in a later update.',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 12.5,
+              height: 1.4,
+              color: GlassTokens.textMuted,
+            ),
+          ),
+        ],
       ),
     );
   }

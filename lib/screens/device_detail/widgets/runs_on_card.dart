@@ -7,8 +7,8 @@ import '../../../widgets/glass/glass.dart';
 // RUNS ON CARD  (UI v2 — valve screen)
 // =============================================================================
 // "Valve runs on: Manual | Automatic". Replaces ModeToggleCard on the valve
-// screen (the plug screen still uses ModeToggleCard), with the same three
-// callbacks and the same rules:
+// and plug screens, with the same three callbacks and the same rules (the
+// plug passes the socket name as [subject]):
 //
 //   Manual / Automatic   → onAutomateChanged(false / true)
 //                          Automatic alone sends nothing until a source is on.
@@ -28,6 +28,12 @@ class RunsOnCard extends StatelessWidget {
   final ValueChanged<bool> onScheduleChanged;
   final ValueChanged<bool> onSensorChanged;
 
+  /// What is being driven: "Valve", or a plug socket's name.
+  final String subject;
+
+  /// Summary while in Manual.
+  final String manualSummary;
+
   const RunsOnCard({
     super.key,
     required this.isAutomateMode,
@@ -37,14 +43,16 @@ class RunsOnCard extends StatelessWidget {
     required this.onAutomateChanged,
     required this.onScheduleChanged,
     required this.onSensorChanged,
+    this.subject = 'Valve',
+    this.manualSummary = 'You control the valve',
   });
 
   /// One line on what the switches add up to (same wording as before).
   String get _summary {
-    if (!isAutomateMode) return 'You control the valve';
+    if (!isAutomateMode) return manualSummary;
     if (isScheduleMode && isSensorMode) return 'Schedule, with sensor override';
-    if (isScheduleMode) return 'Valve follows the schedule';
-    if (isSensorMode) return 'Valve follows sensor readings';
+    if (isScheduleMode) return '$subject follows the schedule';
+    if (isSensorMode) return '$subject follows sensor readings';
     return 'Pick Schedule, Sensor or both';
   }
 
@@ -57,10 +65,12 @@ class RunsOnCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: Text(
-                  'Valve runs on',
-                  style: TextStyle(
+                  '$subject runs on',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
                     fontFamily: GlassTokens.displayFont,
                     fontSize: 15.5,
                     fontWeight: FontWeight.w700,
@@ -195,6 +205,8 @@ class _SourceChip extends StatelessWidget {
                   Expanded(
                     child: Text(
                       label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w800,
@@ -202,6 +214,7 @@ class _SourceChip extends StatelessWidget {
                       ),
                     ),
                   ),
+                  const SizedBox(width: 4),
                   Text(
                     on ? 'ON' : 'OFF',
                     style: TextStyle(

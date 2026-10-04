@@ -41,20 +41,26 @@ class ControlTabs extends StatelessWidget {
       decoration: const BoxDecoration(
         border: Border(bottom: BorderSide(color: GlassTokens.border)),
       ),
-      child: Row(
-        children: [
-          for (final (value, label) in _tabs) ...[
-            _Tab(
-              label: label,
-              isSelected: value == selected,
-              isLocked: locked.contains(value),
-              onTap: locked.contains(value)
-                  ? () => onLockedTap(value)
-                  : () => onSelected(value),
-            ),
-            const SizedBox(width: 18),
+      // Shrinks a little rather than overflow on a narrow phone when the
+      // lock icons are showing.
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: Row(
+          children: [
+            for (final (value, label) in _tabs) ...[
+              _Tab(
+                label: label,
+                isSelected: value == selected,
+                isLocked: locked.contains(value),
+                onTap: locked.contains(value)
+                    ? () => onLockedTap(value)
+                    : () => onSelected(value),
+              ),
+              const SizedBox(width: 18),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }

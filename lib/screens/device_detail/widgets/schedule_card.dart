@@ -174,12 +174,17 @@ class ScheduleSaveBar extends StatelessWidget {
   /// Button label. The sensor rules tab reuses this bar.
   final String saveLabel;
 
+  /// Shown when nothing is waiting to be saved. The plug screen reuses this
+  /// bar.
+  final String savedText;
+
   const ScheduleSaveBar({
     super.key,
     required this.hasUnsavedChanges,
     required this.isSaving,
     required this.onSavePressed,
     this.saveLabel = 'Save schedule',
+    this.savedText = 'Saved on the valve',
   });
 
   @override
@@ -212,9 +217,9 @@ class ScheduleSaveBar extends StatelessWidget {
                       ),
                     ),
                   )
-                : const Text(
-                    'Saved on the valve',
-                    style: TextStyle(
+                : Text(
+                    savedText,
+                    style: const TextStyle(
                       fontSize: 12.5,
                       color: GlassTokens.textMuted,
                     ),

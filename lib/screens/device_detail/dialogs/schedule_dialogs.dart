@@ -15,6 +15,9 @@ import '../widgets/valve_angle_picker.dart';
 //                           fold with a 0–90° slider (5° steps).
 // showDeleteScheduleDialog  confirm a delete (unchanged).
 //
+// The sheet pieces (SheetLabel, SheetChip, SheetTimeBox, HmsWheels) are public
+// so the plug's add-time sheet looks the same.
+//
 // SECONDS ARE SHOWN, NOT SAVED: the valve stores "HH:mm", so the returned
 // entry is built with formatScheduleTime() and the seconds are dropped. No
 // change to the model, the parser or the save call.
@@ -162,13 +165,13 @@ class _ScheduleEntrySheetState extends State<_ScheduleEntrySheet> {
             const SizedBox(height: 14),
 
             // ── Day ──
-            const _Label('Day'),
+            const SheetLabel('Day'),
             Wrap(
               spacing: 6,
               runSpacing: 6,
               children: [
                 for (final d in kScheduleDayOptions)
-                  _Chip(
+                  SheetChip(
                     label: _short(d),
                     selected: d == _day,
                     onTap: () => setState(() => _day = d),
@@ -178,11 +181,11 @@ class _ScheduleEntrySheetState extends State<_ScheduleEntrySheet> {
             const SizedBox(height: 14),
 
             // ── Time ──
-            const _Label('Time'),
+            const SheetLabel('Time'),
             Row(
               children: [
                 Expanded(
-                  child: _TimeBox(
+                  child: SheetTimeBox(
                     label: 'From',
                     value: _hms(_from),
                     active: _editingFrom,
@@ -194,7 +197,7 @@ class _ScheduleEntrySheetState extends State<_ScheduleEntrySheet> {
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: _TimeBox(
+                  child: SheetTimeBox(
                     label: 'To',
                     value: _hms(_to),
                     active: !_editingFrom,
@@ -207,7 +210,7 @@ class _ScheduleEntrySheetState extends State<_ScheduleEntrySheet> {
               ],
             ),
             const SizedBox(height: 8),
-            _HmsWheels(
+            HmsWheels(
               key: ValueKey(_wheelKey),
               seconds: _editingFrom ? _from : _to,
               onHour: (v) => _setPart(h: v),
@@ -228,7 +231,7 @@ class _ScheduleEntrySheetState extends State<_ScheduleEntrySheet> {
             const SizedBox(height: 14),
 
             // ── Valve ──
-            const _Label('Valve'),
+            const SheetLabel('Valve'),
             ValveAnglePicker(
               angle: _angle,
               onChanged: (v) => setState(() => _angle = v),
@@ -265,10 +268,10 @@ class _ScheduleEntrySheetState extends State<_ScheduleEntrySheet> {
 // Sheet pieces
 // -----------------------------------------------------------------------------
 
-class _Label extends StatelessWidget {
+class SheetLabel extends StatelessWidget {
   final String text;
 
-  const _Label(this.text);
+  const SheetLabel(this.text, {super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -287,12 +290,13 @@ class _Label extends StatelessWidget {
   }
 }
 
-class _Chip extends StatelessWidget {
+class SheetChip extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
 
-  const _Chip({
+  const SheetChip({
+    super.key,
     required this.label,
     required this.selected,
     required this.onTap,
@@ -327,13 +331,14 @@ class _Chip extends StatelessWidget {
   }
 }
 
-class _TimeBox extends StatelessWidget {
+class SheetTimeBox extends StatelessWidget {
   final String label;
   final String value;
   final bool active;
   final VoidCallback onTap;
 
-  const _TimeBox({
+  const SheetTimeBox({
+    super.key,
     required this.label,
     required this.value,
     required this.active,
@@ -389,13 +394,13 @@ class _TimeBox extends StatelessWidget {
 /// Hours : minutes : seconds wheels for the selected time box. Owns its
 /// scroll controllers; the parent remounts it (new key) to jump to the other
 /// box.
-class _HmsWheels extends StatefulWidget {
+class HmsWheels extends StatefulWidget {
   final int seconds;
   final ValueChanged<int> onHour;
   final ValueChanged<int> onMinute;
   final ValueChanged<int> onSecond;
 
-  const _HmsWheels({
+  const HmsWheels({
     super.key,
     required this.seconds,
     required this.onHour,
@@ -404,10 +409,10 @@ class _HmsWheels extends StatefulWidget {
   });
 
   @override
-  State<_HmsWheels> createState() => _HmsWheelsState();
+  State<HmsWheels> createState() => HmsWheelsState();
 }
 
-class _HmsWheelsState extends State<_HmsWheels> {
+class HmsWheelsState extends State<HmsWheels> {
   late final FixedExtentScrollController _h;
   late final FixedExtentScrollController _m;
   late final FixedExtentScrollController _s;
@@ -541,4 +546,4 @@ Future<bool> showDeleteScheduleDialog(
   );
 
   return confirmed ?? false;
-}
+}

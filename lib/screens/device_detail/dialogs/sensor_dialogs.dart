@@ -701,7 +701,7 @@ Widget _iconTile(IconData icon) {
     width: 38,
     height: 38,
     decoration: BoxDecoration(
-      color: GlassTokens.info.withValues(alpha: 0.10),
+      color: GlassTokens.infoSoft,
       borderRadius: BorderRadius.circular(GlassTokens.radiusSm),
     ),
     child: Icon(icon, color: GlassTokens.info, size: 20),

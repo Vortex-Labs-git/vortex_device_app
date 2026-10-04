@@ -552,11 +552,11 @@ class _LeverPainter extends CustomPainter {
 
     // Pipe, with water that deepens as the valve opens.
     final Rect pipe = Rect.fromLTRB(0, c.dy - 44 * u, w, c.dy + 44 * u);
-    canvas.drawRect(pipe, Paint()..color = const Color(0xFFD5DED8));
+    canvas.drawRect(pipe, Paint()..color = GlassTokens.metal);
     canvas.drawLine(pipe.topLeft, pipe.topRight,
-        Paint()..color = const Color(0xFFAEBBB2)..strokeWidth = 3 * u);
+        Paint()..color = GlassTokens.metalEdge..strokeWidth = 3 * u);
     canvas.drawLine(pipe.bottomLeft, pipe.bottomRight,
-        Paint()..color = const Color(0xFFAEBBB2)..strokeWidth = 3 * u);
+        Paint()..color = GlassTokens.metalEdge..strokeWidth = 3 * u);
     canvas.drawRect(
       Rect.fromLTRB(0, c.dy - 28 * u, w, c.dy + 28 * u),
       Paint()
@@ -570,7 +570,7 @@ class _LeverPainter extends CustomPainter {
         Rect.fromCenter(center: c, width: 110 * u, height: 110 * u),
         Radius.circular(18 * u),
       ),
-      Paint()..color = const Color(0xFFBFC9C2),
+      Paint()..color = GlassTokens.metalSoft,
     );
 
     // Quarter-turn track and end marks.

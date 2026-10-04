@@ -81,10 +81,6 @@ class _Topic {
   }
 }
 
-const Color _purple = GlassTokens.info;
-const Color _purpleSoft = Color(0xFFEFE7FC);
-const Color _redSoft = Color(0xFFFBE6E6);
-
 const List<_Topic> _topics = [
   _Topic(
     icon: Icons.play_circle_outline_rounded,
@@ -172,8 +168,8 @@ const List<_Topic> _topics = [
   ),
   _Topic(
     icon: Icons.sensors_rounded,
-    color: _purple,
-    background: _purpleSoft,
+    color: GlassTokens.info,
+    background: GlassTokens.infoSoft,
     title: 'Sensor unit',
     summary: 'Readings and sensor setup',
     blocks: [
@@ -239,7 +235,7 @@ const List<_Topic> _topics = [
   _Topic(
     icon: Icons.build_outlined,
     color: GlassTokens.danger,
-    background: _redSoft,
+    background: GlassTokens.dangerSoft,
     title: 'Troubleshooting',
     summary: 'Offline, no reply, no devices',
     blocks: [

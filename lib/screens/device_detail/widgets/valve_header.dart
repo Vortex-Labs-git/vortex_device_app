@@ -18,7 +18,6 @@ import '../../../widgets/glass/glass.dart';
 // The sensor unit screen uses the same band with its own [productLine],
 // photo and fallback icon.
 //
-// DeviceInfoCard is untouched — the plug and Wi-Fi setup screens still use it.
 // View only: every value and callback comes from DeviceDetailScreen.
 // =============================================================================
 
@@ -97,7 +96,7 @@ class ValveHeader extends StatelessWidget {
                         ? Icons.settings_input_antenna_rounded
                         : Icons.wifi_rounded,
                 iconColor: !linkConnected
-                    ? const Color(0xFFFF9C9C)
+                    ? GlassTokens.onForestDanger
                     : isDirectMode
                         ? GlassTokens.gold
                         : Colors.white,

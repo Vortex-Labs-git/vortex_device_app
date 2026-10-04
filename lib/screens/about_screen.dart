@@ -182,7 +182,7 @@ class AboutScreen extends StatelessWidget {
             SettingsRow(
               icon: Icons.star_outline_rounded,
               iconColor: GlassTokens.info,
-              iconBackground: GlassTokens.info.withValues(alpha: 0.1),
+              iconBackground: GlassTokens.infoSoft,
               title: 'Our values',
               subtitle: '${_values.length} principles',
               onTap: () => _showValues(context),

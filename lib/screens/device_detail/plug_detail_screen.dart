@@ -949,7 +949,7 @@ class _PlugDetailScreenState extends State<PlugDetailScreen> {
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
-        color: GlassTokens.danger.withValues(alpha: 0.1),
+        color: GlassTokens.dangerSoft,
         borderRadius: BorderRadius.circular(GlassTokens.radiusSm),
       ),
       child: const Row(
@@ -1103,7 +1103,7 @@ class _PlugDetailScreenState extends State<PlugDetailScreen> {
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
-        color: GlassTokens.danger.withValues(alpha: 0.1),
+        color: GlassTokens.dangerSoft,
         borderRadius: BorderRadius.circular(GlassTokens.radiusSm),
       ),
       child: const Row(

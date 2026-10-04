@@ -83,6 +83,24 @@ class GlassTokens {
   /// Sensor-driven mode, beside manual (leaf) and schedule (sun). 7.02:1.
   static const Color info = Color(0xFF6D28D9);
 
+  /// Light tints behind [info] / [danger] icons, notes and rows.
+  static const Color infoSoft = Color(0xFFEFE7FC);
+  static const Color dangerSoft = Color(0xFFFBE6E6);
+
+  // Colours that sit ON the forest band (header icons and stat tiles).
+  static const Color onForestDanger = Color(0xFFFF9C9C);
+  static const Color onForestWater = Color(0xFF8EC5FF);
+  static const Color onForestSensor = Color(0xFFC9B3FF);
+  static const Color onForestPlug = Color(0xFFFFC98A);
+
+  /// A brighter leaf, for illustrations (the login field hills).
+  static const Color leafBright = Color(0xFF2E9A63);
+
+  // Neutral greys for the valve picture (pipe and lever).
+  static const Color metal = Color(0xFFD5DED8);
+  static const Color metalSoft = Color(0xFFBFC9C2);
+  static const Color metalEdge = Color(0xFFAEBBB2);
+
   // ---------------------------------------------------------------------------
   // SECTION 2: SURFACES
   // ---------------------------------------------------------------------------

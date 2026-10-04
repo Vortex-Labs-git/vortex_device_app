@@ -157,7 +157,7 @@ class SensorCard extends StatelessWidget {
             width: 52,
             height: 52,
             decoration: BoxDecoration(
-              color: GlassTokens.info.withValues(alpha: 0.10),
+              color: GlassTokens.infoSoft,
               borderRadius: BorderRadius.circular(16),
             ),
             child: const Icon(Icons.sensors, color: GlassTokens.info, size: 26),
@@ -231,7 +231,7 @@ class SensorCard extends StatelessWidget {
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  color: GlassTokens.info.withValues(alpha: 0.10),
+                  color: GlassTokens.infoSoft,
                   borderRadius: BorderRadius.circular(GlassTokens.radiusSm),
                 ),
                 child: const Icon(Icons.sensors,

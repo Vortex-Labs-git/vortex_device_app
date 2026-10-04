@@ -39,7 +39,7 @@ class ErrorView extends StatelessWidget {
                 height: 72,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(24),
-                  color: GlassTokens.danger.withValues(alpha: 0.10),
+                  color: GlassTokens.dangerSoft,
                 ),
                 child: const Icon(
                   Icons.wifi_off,

@@ -28,7 +28,7 @@ class LoginFieldArt extends StatelessWidget {
 }
 
 class _FieldPainter extends CustomPainter {
-  static const Color _hill = Color(0xFF2E9A63);
+  static const Color _hill = GlassTokens.leafBright;
 
   @override
   void paint(Canvas canvas, Size size) {

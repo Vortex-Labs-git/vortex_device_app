@@ -120,9 +120,10 @@ class ForestStat extends StatelessWidget {
 
   // Category hues lifted for the forest background (the on-white versions —
   // water / info / sun — are too dark to read on green).
-  static const Color onForestWater = Color(0xFF8EC5FF);
-  static const Color onForestSensor = Color(0xFFC9B3FF);
-  static const Color onForestPlug = Color(0xFFFFC98A);
+  // Kept as aliases; the values live in GlassTokens.
+  static const Color onForestWater = GlassTokens.onForestWater;
+  static const Color onForestSensor = GlassTokens.onForestSensor;
+  static const Color onForestPlug = GlassTokens.onForestPlug;
 
   const ForestStat({
     super.key,

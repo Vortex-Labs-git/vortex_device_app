@@ -313,7 +313,7 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
-        color: GlassTokens.danger.withValues(alpha: 0.1),
+        color: GlassTokens.dangerSoft,
         borderRadius: BorderRadius.circular(GlassTokens.radiusSm),
       ),
       child: Row(
@@ -507,7 +507,7 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
           ToolRow(
             icon: Icons.tune_rounded,
             iconColor: GlassTokens.info,
-            iconBackground: GlassTokens.info.withValues(alpha: 0.1),
+            iconBackground: GlassTokens.infoSoft,
             title: 'Sensor configuration',
             subtitle: 'Set the type and name of each sensor',
             onPressed: _onSensorConfig,

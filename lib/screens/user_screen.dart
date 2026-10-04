@@ -166,7 +166,7 @@ class _UserScreenState extends State<UserScreen> {
               SettingsRow(
                 icon: Icons.logout_rounded,
                 iconColor: GlassTokens.danger,
-                iconBackground: GlassTokens.danger.withValues(alpha: 0.1),
+                iconBackground: GlassTokens.dangerSoft,
                 title: 'Log out',
                 titleColor: GlassTokens.danger,
                 onTap: _handleLogout,

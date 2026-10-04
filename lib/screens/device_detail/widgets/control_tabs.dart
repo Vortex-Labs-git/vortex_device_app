@@ -6,8 +6,8 @@ import '../../../theme/glass_theme.dart';
 // CONTROL TABS  (UI v2 — valve screen)
 // =============================================================================
 // "Control · Schedule · Sensor rules". Picks which card is shown — a view
-// only, exactly like the old ControlModeCard (the plug screen still uses
-// that). Tabs in [locked] show a lock and call [onLockedTap] instead, so the
+// only, like the old Control-by card it replaced (valve and plug screens).
+// Tabs in [locked] show a lock and call [onLockedTap] instead, so the
 // parent can explain why (e.g. a schedule is running, or the valve is
 // offline).
 //

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../models/smart_plug.dart';
 import '../../../models/valve_device.dart';
 import '../../../theme/glass_theme.dart';
 import '../../../widgets/glass/glass.dart';
@@ -241,6 +242,198 @@ class _SensorRuleSheetState extends State<_SensorRuleSheet> {
             min: kSensorAngleMin,
             max: kSensorAngleMax,
             onChanged: (v) => setState(() => _angle = v),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              _error!,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: GlassTokens.danger,
+              ),
+            ),
+          ],
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 2,
+                child: GlassButton(
+                  label: isEditing ? 'Update rule' : 'Add rule',
+                  height: 48,
+                  onPressed: _submit,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Add / edit one PLUG sensor rule: the same sheet as [showSensorRuleDialog],
+/// but the action is Turn ON / Turn OFF for the socket instead of an angle.
+/// Same checks: numbers, not negative, From ≤ To, no overlap with
+/// [existingRules] (which includes [initial] when editing).
+Future<PlugSensorRule?> showPlugSensorRuleDialog(
+  BuildContext context, {
+  required String baseName,
+  PlugSensorRule? initial,
+  List<PlugSensorRule> existingRules = const [],
+}) {
+  return _showSheet<PlugSensorRule>(
+    context,
+    (_) => _PlugSensorRuleSheet(
+      baseName: baseName,
+      initial: initial,
+      existingRules: existingRules,
+    ),
+  );
+}
+
+class _PlugSensorRuleSheet extends StatefulWidget {
+  final String baseName;
+  final PlugSensorRule? initial;
+  final List<PlugSensorRule> existingRules;
+
+  const _PlugSensorRuleSheet({
+    required this.baseName,
+    this.initial,
+    required this.existingRules,
+  });
+
+  @override
+  State<_PlugSensorRuleSheet> createState() => _PlugSensorRuleSheetState();
+}
+
+class _PlugSensorRuleSheetState extends State<_PlugSensorRuleSheet> {
+  late final TextEditingController _from;
+  late final TextEditingController _to;
+  late bool _on;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    final e = widget.initial;
+    _from = TextEditingController(text: (e?.from ?? 0).toString());
+    _to = TextEditingController(text: (e?.to ?? 30).toString());
+    _on = e?.state ?? true;
+  }
+
+  @override
+  void dispose() {
+    _from.dispose();
+    _to.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final int? from = int.tryParse(_from.text.trim());
+    final int? to = int.tryParse(_to.text.trim());
+    if (from == null || to == null) {
+      setState(() => _error = 'Enter both ends of the range as numbers');
+      return;
+    }
+    if (from < 0 || to < 0) {
+      setState(() => _error = 'Range cannot be negative');
+      return;
+    }
+    if (from > to) {
+      setState(() => _error = '"From" must be less than or equal to "To"');
+      return;
+    }
+    final candidate = PlugSensorRule(from: from, to: to, state: _on);
+    final clash = widget.existingRules
+        .any((r) => !identical(r, widget.initial) && r.overlaps(candidate));
+    if (clash) {
+      setState(() => _error = 'This range overlaps a rule you already have');
+      return;
+    }
+    Navigator.pop(context, candidate);
+  }
+
+  Widget _label(String text) => Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Text(
+          text.toUpperCase(),
+          style: const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.9,
+            color: GlassTokens.textMuted,
+          ),
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isEditing = widget.initial != null;
+    return SingleChildScrollView(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _sheetTitle(
+            '${isEditing ? 'Edit rule' : 'Add rule'} · ${widget.baseName}',
+          ),
+          const SizedBox(height: 14),
+          _label('When the reading is'),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _from,
+                  keyboardType: TextInputType.number,
+                  textInputAction: TextInputAction.next,
+                  onChanged: (_) => setState(() => _error = null),
+                  decoration: glassInputDecoration(labelText: 'From'),
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 10),
+                child: Text('–',
+                    style: TextStyle(
+                        fontSize: 18, color: GlassTokens.textMuted)),
+              ),
+              Expanded(
+                child: TextField(
+                  controller: _to,
+                  keyboardType: TextInputType.number,
+                  textInputAction: TextInputAction.done,
+                  onChanged: (_) => setState(() => _error = null),
+                  decoration: glassInputDecoration(labelText: 'To'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          _label('Then ${widget.baseName} should'),
+          SegmentedPicker<bool>(
+            selected: _on,
+            onChanged: (v) => setState(() => _on = v),
+            options: const [
+              SegmentOption(
+                value: true,
+                label: 'Turn ON',
+                icon: Icons.power_settings_new_rounded,
+                color: GlassTokens.primary,
+              ),
+              SegmentOption(
+                value: false,
+                label: 'Turn OFF',
+                icon: Icons.power_off_outlined,
+              ),
+            ],
           ),
           if (_error != null) ...[
             const SizedBox(height: 10),

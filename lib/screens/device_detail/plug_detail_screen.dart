@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../controllers/device_repository.dart';
 import '../../models/smart_plug.dart';
+import '../../models/valve_device.dart' show SensorReading;
+import '../../services/auth_service.dart';
 import '../../services/plug_control_api.dart';
 import '../../theme/glass_theme.dart';
 import '../../utils/app_log.dart';
@@ -14,6 +17,8 @@ import 'controllers/plug_feed.dart';
 // Dialogs
 import 'dialogs/edit_device_name_dialog.dart';
 import 'dialogs/plug_schedule_dialogs.dart';
+import 'dialogs/sensor_dialogs.dart'
+    show showAddSensorFlow, showPlugSensorRuleDialog, showRemoveSensorDialog;
 
 // Pure helpers
 import 'utils/valve_utils.dart' show isDeviceOnline;
@@ -22,6 +27,7 @@ import 'utils/valve_utils.dart' show isDeviceOnline;
 import 'widgets/control_tabs.dart';
 import 'widgets/plug_manual_card.dart';
 import 'widgets/plug_schedule_card.dart';
+import 'widgets/plug_sensor_card.dart';
 import 'widgets/plug_socket_cards.dart';
 import 'widgets/runs_on_card.dart';
 import 'widgets/schedule_card.dart' show ScheduleSaveBar;
@@ -42,7 +48,8 @@ import 'widgets/valve_header.dart';
 //   5  PlugManualCard        big power button
 //      PlugScheduleCard      week strip + time cards (+ step cycle); the
 //                            Save bar is pinned to the bottom
-//      sensor                placeholder — next step
+//      PlugSensorCard        the socket's own sensor + ON/OFF rules; the
+//                            Save bar is pinned to the bottom
 //
 // Everything from 3 down belongs to the SELECTED base. Each base keeps its own
 // UI state (automate switch, control-by choice, pending command).
@@ -88,6 +95,18 @@ class _PlugDetailScreenState extends State<PlugDetailScreen> {
   };
   final Set<PlugBaseId> _schedulesEdited = {};
   final Set<PlugBaseId> _savingSchedule = {};
+
+  // -- Sensor rule tables (per base) --
+  /// Same idea as the schedules: follows the server's copy (_controls) until
+  /// the user edits a base's rules, then waits for Save. Each socket has its
+  /// own sensor and rules.
+  final Map<PlugBaseId, List<PlugSensorRule>> _sensorRules = {
+    PlugBaseId.a: [],
+    PlugBaseId.b: [],
+  };
+  final Set<PlugBaseId> _sensorRulesEdited = {};
+  final Set<PlugBaseId> _savingSensor = {};
+  bool _loadingSensorUnits = false;
 
   // -- Connection state --
   bool _wsConnected = false;
@@ -201,6 +220,9 @@ class _PlugDetailScreenState extends State<PlugDetailScreen> {
         // Don't overwrite a table the user is editing.
         if (!_schedulesEdited.contains(id)) {
           _schedules[id] = List.of(c.schedules);
+        }
+        if (!_sensorRulesEdited.contains(id)) {
+          _sensorRules[id] = List.of(c.sensorRules);
         }
       }
     });
@@ -377,6 +399,196 @@ class _PlugDetailScreenState extends State<PlugDetailScreen> {
   }
 
   // ===========================================================================
+  // SECTION 5c: SENSOR (link / unlink / rules, per base)
+  // ===========================================================================
+  // set_plug_sensor carries EVERY base, so each call sends the other base as
+  // the server last pushed it (_controls) and only changes the selected one.
+
+  Future<void> _showSensorRuleDialog({int? editIndex}) async {
+    final id = _selected;
+    final list = _sensorRules[id]!;
+
+    final rule = await showPlugSensorRuleDialog(
+      context,
+      baseName: _plug.base(id).name,
+      initial: editIndex != null ? list[editIndex] : null,
+      existingRules: list,
+    );
+    if (rule == null || !mounted) return;
+
+    setState(() {
+      if (editIndex != null) {
+        list[editIndex] = rule;
+      } else {
+        list.add(rule);
+      }
+      list.sort((a, b) => a.from.compareTo(b.from));
+      _sensorRulesEdited.add(id);
+    });
+  }
+
+  void _deleteSensorRule(int index) {
+    final id = _selected;
+    setState(() {
+      _sensorRules[id]!.removeAt(index);
+      _sensorRulesEdited.add(id);
+    });
+  }
+
+  /// The push carries unit_id but not always unit_name; fill it from the home
+  /// list (same as the valve).
+  SensorReading _sensorForSave(SensorReading sensor) {
+    if (sensor.unitName.isNotEmpty) return sensor;
+    final String name =
+        DeviceRepository.instance.deviceById(sensor.unitId)?.name ?? '';
+    return sensor.copyWith(unitName: name);
+  }
+
+  /// Every base's current server setup, with [id] replaced by [control].
+  Map<PlugBaseId, PlugBaseControl> _controlsWith(
+    PlugBaseId id,
+    PlugBaseControl control,
+  ) {
+    final Map<PlugBaseId, PlugBaseControl> all = {..._controls, id: control};
+    return {
+      for (final e in all.entries)
+        e.key: e.value.sensor == null
+            ? e.value
+            : e.value.copyWith(sensor: _sensorForSave(e.value.sensor!)),
+    };
+  }
+
+  PlugBaseControl _controlOf(PlugBaseId id) =>
+      _controls[id] ?? PlugBaseControl.empty(id);
+
+  Future<void> _saveSensorRules() async {
+    final id = _selected;
+    final control = _controlOf(id);
+    if (control.sensor == null) {
+      _showMessage('No sensor is linked to ${_plug.base(id).name}',
+          color: GlassTokens.danger);
+      return;
+    }
+
+    setState(() => _savingSensor.add(id));
+
+    final updated = control.copyWith(sensorRules: List.of(_sensorRules[id]!));
+    final result = await PlugControlApi.savePlugSensor(
+      plug: _plug,
+      controls: _controlsWith(id, updated),
+    );
+
+    if (!mounted) return;
+
+    if (result.success) {
+      // Saved — the server's copy is authoritative again for this base.
+      setState(() {
+        _controls[id] = updated;
+        _sensorRulesEdited.remove(id);
+      });
+      _showMessage(
+        '${_plug.base(id).name}: sensor rules saved',
+        color: GlassTokens.success,
+      );
+    } else {
+      _showMessage(result.displayMessage, color: GlassTokens.danger);
+    }
+
+    setState(() => _savingSensor.remove(id));
+  }
+
+  /// "Choose a sensor" — fetch the account's units, run the two-step picker,
+  /// then link the sensor to the selected socket with an EMPTY rule table
+  /// (old ranges belonged to the previous sensor).
+  Future<void> _addSensor() async {
+    final id = _selected;
+    setState(() => _loadingSensorUnits = true);
+
+    final result = await PlugControlApi.getUserSensors(
+      userId: AuthService.currentUser?['id'],
+      deviceId: _plug.id,
+    );
+
+    if (!mounted) return;
+    setState(() => _loadingSensorUnits = false);
+
+    if (!result.success) {
+      _showMessage(result.displayMessage, color: GlassTokens.danger);
+      return;
+    }
+    if (result.units.isEmpty) {
+      _showMessage('No sensor units found on this account',
+          color: GlassTokens.warning);
+      return;
+    }
+
+    final SensorReading? picked =
+        await showAddSensorFlow(context, units: result.units);
+    if (picked == null || !mounted) return;
+
+    setState(() => _savingSensor.add(id));
+
+    final linked =
+        _controlOf(id).copyWith(sensor: picked, sensorRules: const []);
+    final saved = await PlugControlApi.savePlugSensor(
+      plug: _plug,
+      controls: _controlsWith(id, linked),
+    );
+
+    if (!mounted) return;
+
+    if (saved.success) {
+      setState(() {
+        _controls[id] = linked;
+        _sensorRules[id] = [];
+        _sensorRulesEdited.remove(id);
+      });
+      _showMessage('Sensor linked to ${_plug.base(id).name}',
+          color: GlassTokens.success);
+    } else {
+      _showMessage(saved.displayMessage, color: GlassTokens.danger);
+    }
+
+    setState(() => _savingSensor.remove(id));
+  }
+
+  /// "Remove" — unlinks the selected socket's sensor and drops its rules. The
+  /// other socket is resent unchanged.
+  Future<void> _removeSensor() async {
+    final id = _selected;
+    final bool? confirmed = await showRemoveSensorDialog(
+      context,
+      ruleCount: _sensorRules[id]!.length,
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _savingSensor.add(id));
+
+    final result = await PlugControlApi.clearBaseSensor(
+      plug: _plug,
+      base: id,
+      controls: _controlsWith(id, _controlOf(id)),
+    );
+
+    if (!mounted) return;
+
+    if (result.success) {
+      setState(() {
+        _controls[id] =
+            _controlOf(id).copyWith(clearSensor: true, sensorRules: const []);
+        _sensorRules[id] = [];
+        _sensorRulesEdited.remove(id);
+      });
+      _showMessage('Sensor removed from ${_plug.base(id).name}',
+          color: GlassTokens.success);
+    } else {
+      _showMessage(result.displayMessage, color: GlassTokens.danger);
+    }
+
+    setState(() => _savingSensor.remove(id));
+  }
+
+  // ===========================================================================
   // SECTION 6: RENAME (plug + base)
   // ===========================================================================
 
@@ -465,7 +677,7 @@ class _PlugDetailScreenState extends State<PlugDetailScreen> {
       // The forest header draws behind the status bar itself.
       useSafeArea: false,
 
-      // 8.7  Save bar — separate from the list, pinned to the bottom
+      // 8.7  Save bars — separate from the lists, pinned to the bottom
       bottomNavigationBar: activeCard == 'schedule'
           ? ScheduleSaveBar(
               hasUnsavedChanges: _schedulesEdited.contains(id),
@@ -473,7 +685,15 @@ class _PlugDetailScreenState extends State<PlugDetailScreen> {
               onSavePressed: _saveSchedule,
               savedText: 'Saved on the plug',
             )
-          : null,
+          : activeCard == 'sensor' && _controlOf(id).sensor != null
+              ? ScheduleSaveBar(
+                  hasUnsavedChanges: _sensorRulesEdited.contains(id),
+                  isSaving: _savingSensor.contains(id),
+                  onSavePressed: _saveSensorRules,
+                  saveLabel: 'Save sensor rules',
+                  savedText: 'Saved on the plug',
+                )
+              : null,
 
       body: Stack(
         children: [
@@ -649,7 +869,20 @@ class _PlugDetailScreenState extends State<PlugDetailScreen> {
           onSavePressed: _saveSchedule,
         )
       else
-        _sensorPlaceholder(base),
+        PlugSensorCard(
+          baseName: base.name,
+          reading: _controlOf(id).sensor,
+          isUnitOnline: isDeviceOnline(_controlOf(id).sensor?.lastSeen),
+          rules: _sensorRules[id]!,
+          isSavingRules: _savingSensor.contains(id),
+          isLoadingUnits: _loadingSensorUnits,
+          onAddPressed: _showSensorRuleDialog,
+          onAddSensorPressed: _addSensor,
+          onRemoveSensor: _removeSensor,
+          onRowTapped: (i) => _showSensorRuleDialog(editIndex: i),
+          onRowDeleted: _deleteSensorRule,
+          onSavePressed: _saveSensorRules,
+        ),
     ];
   }
 
@@ -675,8 +908,8 @@ class _PlugDetailScreenState extends State<PlugDetailScreen> {
                     style: TextStyle(fontWeight: FontWeight.w800),
                   ),
                   TextSpan(
-                    text: 'switching needs the plug online. The schedule can '
-                        'still be edited and saved.',
+                    text: 'switching needs the plug online. Schedules and '
+                        'sensor rules can still be edited and saved.',
                   ),
                 ],
               ),
@@ -685,52 +918,6 @@ class _PlugDetailScreenState extends State<PlugDetailScreen> {
                 height: 1.4,
                 color: GlassTokens.danger,
               ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // TODO(plug): replace with PlugSensorCard.
-  Widget _sensorPlaceholder(PlugBase base) {
-    final sensor = _controls[base.id]?.sensor;
-    return GlassCard(
-      padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
-      child: Column(
-        children: [
-          Container(
-            width: 46,
-            height: 46,
-            decoration: BoxDecoration(
-              color: GlassTokens.info.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(GlassTokens.radiusSm),
-            ),
-            child: const Icon(Icons.sensors_rounded, color: GlassTokens.info),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'Sensor rules for ${base.name}',
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontFamily: GlassTokens.displayFont,
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: GlassTokens.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            sensor == null
-                ? 'No sensor linked yet. Sensor control for plugs is coming '
-                    'in a later update.'
-                : '${sensor.sensorName} is linked. Sensor rules for plugs are '
-                    'coming in a later update.',
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 12.5,
-              height: 1.4,
-              color: GlassTokens.textMuted,
             ),
           ),
         ],

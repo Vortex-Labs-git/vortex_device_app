@@ -17,7 +17,8 @@ import 'schedule_dialogs.dart'
 //   showPlugScheduleEntryDialog   add / edit one time, as a bottom sheet:
 //                                 day chips (one day, as before), From / To
 //                                 with hours : minutes : SECONDS wheels, and
-//                                 an "Advanced" fold for the ON / OFF cycle
+//                                 an "Advanced" drop-down for the ON / OFF
+//                                 cycle (closed = Always ON)
 //   showDeletePlugScheduleDialog  confirm a delete (unchanged)
 //
 // Same look as the valve's add-slot sheet (shared SheetLabel / SheetChip /
@@ -350,6 +351,7 @@ class _PlugScheduleSheetState extends State<_PlugScheduleSheet> {
             Row(
               children: [
                 Expanded(
+                  flex: 2,
                   child: OutlinedButton(
                     onPressed: () => Navigator.pop(context),
                     child: const Text('Cancel'),
@@ -357,10 +359,9 @@ class _PlugScheduleSheetState extends State<_PlugScheduleSheet> {
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  flex: 2,
+                  flex: 3,
                   child: GlassButton(
                     label: _isEditing ? 'Update time' : 'Add time',
-                    icon: Icons.check_rounded,
                     height: 48,
                     onPressed: _submit,
                   ),
@@ -373,9 +374,14 @@ class _PlugScheduleSheetState extends State<_PlugScheduleSheet> {
     );
   }
 
-  /// "Advanced · cycle ON / OFF" — open means the cycle is used; closed means
-  /// ON for the whole range (same meaning as the old switch).
+  /// "Advanced · cycle ON / OFF" drop-down, like the valve's Advanced fold.
+  /// Closed = ON for the whole range (the default); open = the ON / OFF
+  /// cycle with its seconds. The header shows which one is in use.
   Widget _cycleFold() {
+    final String summary = _cycle
+        ? '${_onSeconds ?? 0} s / ${_offSeconds ?? 0} s'
+        : 'Always ON';
+
     return Container(
       decoration: BoxDecoration(
         border: Border.all(color: GlassTokens.border),
@@ -384,51 +390,52 @@ class _PlugScheduleSheetState extends State<_PlugScheduleSheet> {
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
-          InkWell(
-            onTap: () => setState(() {
-              _cycle = !_cycle;
-              _error = null;
-            }),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-              child: Row(
-                children: [
-                  const Icon(Icons.repeat_rounded,
-                      size: 18, color: GlassTokens.textSecondary),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Advanced · cycle ON / OFF',
-                          style: TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w800,
-                            color: GlassTokens.textPrimary,
-                          ),
+          Semantics(
+            button: true,
+            expanded: _cycle,
+            child: InkWell(
+              onTap: () => setState(() {
+                _cycle = !_cycle;
+                _error = null;
+              }),
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+                child: Row(
+                  children: [
+                    const Icon(Icons.repeat_rounded,
+                        size: 18, color: GlassTokens.textSecondary),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Text(
+                        'Advanced · cycle ON / OFF',
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w800,
+                          color: GlassTokens.textPrimary,
                         ),
-                        Text(
-                          _cycle
-                              ? 'Repeats ON then OFF until the range ends'
-                              : 'Off: stays ON for the whole range',
-                          style: const TextStyle(
-                            fontSize: 11.5,
-                            color: GlassTokens.textMuted,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
-                  Switch(
-                    value: _cycle,
-                    activeTrackColor: GlassTokens.primary,
-                    onChanged: (v) => setState(() {
-                      _cycle = v;
-                      _error = null;
-                    }),
-                  ),
-                ],
+                    const SizedBox(width: 6),
+                    Text(
+                      summary,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w800,
+                        color: _cycle
+                            ? GlassTokens.water
+                            : GlassTokens.textMuted,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    AnimatedRotation(
+                      turns: _cycle ? 0.5 : 0,
+                      duration: const Duration(milliseconds: 200),
+                      child: const Icon(Icons.keyboard_arrow_down_rounded,
+                          color: GlassTokens.textSecondary),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -445,11 +452,11 @@ class _PlugScheduleSheetState extends State<_PlugScheduleSheet> {
                         Row(
                           children: [
                             Expanded(
-                                child: _secondsField('ON (seconds)', _onCtrl)),
+                                child: _secondsField('ON (sec)', _onCtrl)),
                             const SizedBox(width: 10),
                             Expanded(
                                 child:
-                                    _secondsField('OFF (seconds)', _offCtrl)),
+                                    _secondsField('OFF (sec)', _offCtrl)),
                           ],
                         ),
                         const SizedBox(height: 6),
@@ -458,6 +465,15 @@ class _PlugScheduleSheetState extends State<_PlugScheduleSheet> {
                           style: const TextStyle(
                             fontSize: 12,
                             color: GlassTokens.textMuted,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        const Text(
+                          'Close this to stay ON the whole time',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: GlassTokens.primary,
                           ),
                         ),
                       ],

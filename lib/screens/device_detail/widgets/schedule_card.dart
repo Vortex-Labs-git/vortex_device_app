@@ -1,25 +1,37 @@
 import 'package:flutter/material.dart';
 
-import '../../../theme/glass_theme.dart';
-
-import '../../../widgets/glass/glass.dart';
-
 import '../../../models/valve_device.dart';
+import '../../../theme/glass_theme.dart';
+import '../../../widgets/glass/glass.dart';
+import 'tinted_add_button.dart';
 
 // =============================================================================
-// SCHEDULE CARD
+// SCHEDULE CARD  (UI v2)
 // =============================================================================
-// Shows the schedule table (Day | Time | Angle | delete), an "Add Schedule"
-// button, and a "Save Schedule" button. All add/edit/delete dialogs and the
-// REST save call live in the parent screen and are invoked through callbacks.
+// The valve's schedule as a week strip and slot cards:
+//
+//   All · Mo … Su   pick a day; a gold dot marks days that have slots.
+//                   "Every day" slots appear on every day, tagged.
+//   slot cards      "06:00:00 – 06:30:00", a bar for how far the valve
+//                   opens, the angle, and a delete button. Tap to edit.
+//   + Add slot      opens the add sheet.
+//
+// The valve stores hours and minutes; times are shown with ":00" seconds so
+// they line up with the add/edit sheet.
+//
+// SAVING IS SEPARATE: this card never saves. Edits change the list in the
+// parent only; the parent's floating Save pill (FloatingSavePill) sends the
+// whole list. All dialogs and the REST call live in the parent and arrive as
+// callbacks — same split as before. The selected day
+// is the only state here, and it is view-only.
 // =============================================================================
 
-class ScheduleCard extends StatelessWidget {
+class ScheduleCard extends StatefulWidget {
   final List<ScheduleEntry> schedules;
   final bool isSavingSchedule;
-  final bool readOnly; 
+  final bool readOnly;
   final VoidCallback onAddPressed;
-  final ValueChanged<int> onRowTapped;   // Tap a row to edit it
+  final ValueChanged<int> onRowTapped; // Tap a row to edit it
   final ValueChanged<int> onRowDeleted;
   final VoidCallback onSavePressed;
 
@@ -27,230 +39,303 @@ class ScheduleCard extends StatelessWidget {
     super.key,
     required this.schedules,
     required this.isSavingSchedule,
-    this.readOnly = false, 
+    this.readOnly = false,
     required this.onAddPressed,
     required this.onRowTapped,
     required this.onRowDeleted,
     required this.onSavePressed,
   });
 
-  // Column widths, shared by the header and every row so they stay aligned.
-  static const int _dayFlex = 3;
-  static const int _timeFlex = 3;
-  static const int _angleFlex = 2;
-  static const double _deleteWidth = 40;
+  @override
+  State<ScheduleCard> createState() => _ScheduleCardState();
+}
+
+class _ScheduleCardState extends State<ScheduleCard> {
+  static const String _everyDay = 'Every day';
+  static const List<(String, String)> _days = [
+    ('Monday', 'Mo'),
+    ('Tuesday', 'Tu'),
+    ('Wednesday', 'We'),
+    ('Thursday', 'Th'),
+    ('Friday', 'Fr'),
+    ('Saturday', 'Sa'),
+    ('Sunday', 'Su'),
+  ];
+
+  /// null = All days.
+  String? _day;
+
+  bool _onDay(ScheduleEntry e, String day) =>
+      e.day == day || e.day == _everyDay;
 
   @override
   Widget build(BuildContext context) {
-    return GlassCard(
-      padding: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    final schedules = widget.schedules;
+
+    // Keep the original index: edit / delete callbacks use it.
+    final visible = <(int, ScheduleEntry)>[
+      for (int i = 0; i < schedules.length; i++)
+        if (_day == null || _onDay(schedules[i], _day!)) (i, schedules[i]),
+    ]..sort((a, b) => a.$2.start.compareTo(b.$2.start));
+
+    final String title = _day ?? 'All days';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // ── Week strip ──
+        Row(
           children: [
-            // =========================================================
-            // SECTION 1: HEADER ROW (title + entry count)
-            // =========================================================
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Schedule',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-                Text(
-                  '${schedules.length} entries',
-                  style: TextStyle(color: GlassTokens.textMuted, fontSize: 12),
-                ),
-              ],
+            _DayChip(
+              label: 'All',
+              hasSlots: schedules.isNotEmpty,
+              selected: _day == null,
+              onTap: () => setState(() => _day = null),
             ),
+            for (final (full, short) in _days) ...[
+              const SizedBox(width: 4),
+              _DayChip(
+                label: short,
+                hasSlots: schedules.any((e) => _onDay(e, full)),
+                selected: _day == full,
+                onTap: () => setState(() => _day = full),
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 14),
 
-            const SizedBox(height: 16),
-
-            // =========================================================
-            // SECTION 2: TABLE HEADER (Day | Time | Angle | _)
-            // =========================================================
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              decoration: BoxDecoration(
-                color: GlassTokens.primary.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.6),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  fontFamily: GlassTokens.displayFont,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  color: GlassTokens.textPrimary,
                 ),
               ),
-              child: const Row(
+            ),
+            Text(
+              '${visible.length} ${visible.length == 1 ? 'slot' : 'slots'}',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: GlassTokens.textMuted,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+
+        if (visible.isEmpty)
+          GlassCard(
+            padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 16),
+            child: Text(
+              _day == null
+                  ? 'No watering times yet.'
+                  : 'No watering on $title.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: GlassTokens.textMuted),
+            ),
+          ),
+
+        for (final (index, entry) in visible)
+          _SlotCard(
+            entry: entry,
+            showEveryDayTag: entry.day == _everyDay,
+            showDay: _day == null && entry.day != _everyDay,
+            readOnly: widget.readOnly,
+            onTap: () => widget.onRowTapped(index),
+            onDelete: () => widget.onRowDeleted(index),
+          ),
+
+        if (!widget.readOnly) ...[
+          const SizedBox(height: 2),
+          TintedAddButton(label: 'Add slot', onPressed: widget.onAddPressed),
+        ],
+      ],
+    );
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Pieces
+// -----------------------------------------------------------------------------
+
+class _DayChip extends StatelessWidget {
+  final String label;
+  final bool hasSlots;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _DayChip({
+    required this.label,
+    required this.hasSlots,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final Color fg = selected ? GlassTokens.ground : GlassTokens.textSecondary;
+    return Expanded(
+      child: Semantics(
+        selected: selected,
+        button: true,
+        child: Material(
+          color: selected ? GlassTokens.textPrimary : GlassTokens.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+            side: BorderSide(
+              color: selected ? GlassTokens.textPrimary : GlassTokens.border,
+              width: 1.5,
+            ),
+          ),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(10),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 7),
+              child: Column(
                 children: [
-                  Expanded(
-                    flex: _dayFlex,
-                    child: Center(
-                      child: Text('Day',
-                          style: TextStyle(fontWeight: FontWeight.bold)),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w800,
+                      color: fg,
                     ),
                   ),
-                  Expanded(
-                    flex: _timeFlex,
-                    child: Center(
-                      child: Text('Time',
-                          style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 3),
+                  Container(
+                    width: 5,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: hasSlots ? GlassTokens.sun : Colors.transparent,
                     ),
                   ),
-                  Expanded(
-                    flex: _angleFlex,
-                    child: Center(
-                      child: Text('Angle',
-                          style: TextStyle(fontWeight: FontWeight.bold)),
-                    ),
-                  ),
-                  SizedBox(width: _deleteWidth), // delete button column
                 ],
               ),
             ),
-
-            // =========================================================
-            // SECTION 3: SCHEDULE ROWS (or empty placeholder)
-            // =========================================================
-            if (schedules.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 24),
-                child: Center(
-                  child: Text(
-                    'No schedules added yet.\nTap + to add one.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: GlassTokens.textMuted),
-                  ),
-                ),
-              )
-            else
-              ...schedules.asMap().entries.map(
-                    (e) => _buildRow(index: e.key, entry: e.value),
-                  ),
-
-            const SizedBox(height: 12),
-
-            // =========================================================
-            // SECTION 4: ADD SCHEDULE BUTTON
-            // =========================================================
-            Center(
-              child: TextButton.icon(
-                onPressed: onAddPressed,
-                icon: const Icon(Icons.add_circle_outline),
-                label: const Text('Add Schedule'),
-                style: TextButton.styleFrom(
-                  foregroundColor: GlassTokens.primary,
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            // =========================================================
-            // SECTION 5: SAVE SCHEDULE BUTTON
-            // =========================================================
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: isSavingSchedule ? null : onSavePressed,
-                icon: isSavingSchedule
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Icon(Icons.save),
-                label: Text(isSavingSchedule ? 'Saving...' : 'Save Schedule'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: GlassTokens.primary,
-                  foregroundColor: Colors.white,
-                  disabledBackgroundColor:
-                      GlassTokens.primary.withValues(alpha: 0.6),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ───────────────────────────────────────────────────────────────────────
-  // Helper: single schedule row (Day | Time | Angle | delete-icon)
-  // Tapping the row body edits it; the delete icon deletes independently.
-  // ───────────────────────────────────────────────────────────────────────
-  Widget _buildRow({required int index, required ScheduleEntry entry}) {
-    return InkWell(
-      onTap: () => onRowTapped(index),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(color: Colors.white.withValues(alpha: 0.55)),
           ),
         ),
-        child: Row(
-          children: [
-            Expanded(
-              flex: _dayFlex,
-              child: Center(
-                child: Text(
-                  entry.day,
-                  style: const TextStyle(fontSize: 13),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ),
-            Expanded(
-              flex: _timeFlex,
-              child: Center(
-                child: Text(
-                  '${entry.start} – ${entry.end}',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ),
-            Expanded(
-              flex: _angleFlex,
-              child: Center(
-                child: Text(
-                  '${entry.angle}°',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: _angleColor(entry.angle),
-                  ),
-                ),
-              ),
-            ),
-            SizedBox(
-              width: _deleteWidth,
-              child: IconButton(
-                icon: const Icon(Icons.delete_outline, size: 18),
-                color: GlassTokens.danger,
-                onPressed: () => onRowDeleted(index),
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
+}
 
-  /// Keeps the old table's colour language: green = open, red = closed,
-  /// amber for anything in between.
-  Color _angleColor(int angle) {
-    if (angle <= 0) return GlassTokens.danger;
-    if (angle >= 90) return GlassTokens.success;
-    return GlassTokens.warning;
+class _SlotCard extends StatelessWidget {
+  final ScheduleEntry entry;
+  final bool showEveryDayTag;
+  final bool showDay;
+  final bool readOnly;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
+
+  const _SlotCard({
+    required this.entry,
+    required this.showEveryDayTag,
+    required this.showDay,
+    required this.readOnly,
+    required this.onTap,
+    required this.onDelete,
+  });
+
+  /// "08:00" → "08:00:00". Leaves anything else as it came.
+  static String _hms(String t) => RegExp(r'^\d{1,2}:\d{2}$').hasMatch(t)
+      ? '${t.padLeft(5, '0')}:00'
+      : t;
+
+  @override
+  Widget build(BuildContext context) {
+    final int a = entry.angle.clamp(0, 90);
+    final String what = a == 90
+        ? 'Fully open'
+        : a == 0
+            ? 'Closed'
+            : '$a° open';
+
+    return GlassSurface(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
+      borderRadius: BorderRadius.circular(GlassTokens.radiusMd),
+      onTap: readOnly ? null : onTap,
+      child: Row(
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${_hms(entry.start)} – ${_hms(entry.end)}',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: GlassTokens.textPrimary,
+                  fontFeatures: [FontFeature.tabularFigures()],
+                ),
+              ),
+              const SizedBox(height: 2),
+              Row(
+                children: [
+                  Text(
+                    showDay ? '${entry.day} · $what' : what,
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: GlassTokens.textMuted,
+                    ),
+                  ),
+                  if (showEveryDayTag) ...[
+                    const SizedBox(width: 6),
+                    const StatusTag(
+                      label: 'Every day',
+                      color: GlassTokens.sun,
+                      background: GlassTokens.sunSoft,
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(9),
+              child: LinearProgressIndicator(
+                value: a / 90,
+                minHeight: 7,
+                backgroundColor: GlassTokens.sunk,
+                color: GlassTokens.water,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            '$a°',
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              color: GlassTokens.water,
+              fontFeatures: [FontFeature.tabularFigures()],
+            ),
+          ),
+          if (!readOnly)
+            IconButton(
+              tooltip: 'Delete',
+              icon: const Icon(Icons.delete_outline,
+                  size: 20, color: GlassTokens.textMuted),
+              onPressed: onDelete,
+            )
+          else
+            const SizedBox(width: 12),
+        ],
+      ),
+    );
   }
 }

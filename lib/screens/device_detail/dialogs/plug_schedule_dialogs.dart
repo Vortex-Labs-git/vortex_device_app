@@ -1,4 +1,3 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -7,41 +6,47 @@ import '../../../theme/glass_theme.dart';
 import '../../../widgets/glass/glass.dart';
 import '../utils/plug_utils.dart';
 import '../utils/schedule_utils.dart' show kScheduleDayOptions;
+import 'schedule_dialogs.dart'
+    show HmsWheels, SheetChip, SheetLabel, SheetTimeBox;
 
 // =============================================================================
-// PLUG SCHEDULE DIALOGS
+// PLUG SCHEDULE DIALOGS  (UI v2)
 // =============================================================================
 // The plug's version of schedule_dialogs.dart:
 //
-//   showPlugScheduleEntryDialog   add / edit one row: day, From–To (with
-//                                 SECONDS), and the ADVANCED step cycle
-//   showDeletePlugScheduleDialog  confirm a delete
-//   showPlugTimePicker            HH : mm : ss wheel picker (Flutter's
-//                                 showTimePicker has no seconds)
+//   showPlugScheduleEntryDialog   add / edit one time, as a bottom sheet:
+//                                 day chips (one day, as before), From / To
+//                                 with hours : minutes : SECONDS wheels, and
+//                                 an "Advanced" drop-down for the ON / OFF
+//                                 cycle (closed = Always ON)
+//   showDeletePlugScheduleDialog  confirm a delete (unchanged)
 //
-// No ON/OFF choice: the base is OFF outside every range and ON inside it.
+// Same look as the valve's add-slot sheet (shared SheetLabel / SheetChip /
+// SheetTimeBox / HmsWheels). Unlike the valve, the plug KEEPS the seconds.
+//
+// No ON/OFF choice: the socket is OFF outside every range and ON inside it.
 //
 // STEP ("advanced"): "<on seconds>:<off seconds>", cycled inside the range.
 //   Off  → continuous, step = <range length>:0   (the default, e.g. "1200:0")
 //   On   → the user picks ON and OFF seconds, e.g. 5:5
-//
-// The dialogs are StatefulWidgets so they own (and dispose) their
-// controllers — same reason as edit_device_name_dialog.dart.
+// Checks are unchanged; the message now shows inside the sheet.
 // =============================================================================
 
-/// Shows the add/edit dialog for one schedule row of [baseName].
+/// Shows the add/edit sheet for one schedule row of [baseName].
 /// Pass [initial] to edit. Returns the entry, or null if cancelled.
 Future<PlugScheduleEntry?> showPlugScheduleEntryDialog(
   BuildContext context, {
   required String baseName,
   PlugScheduleEntry? initial,
 }) {
-  return showGlassDialog<PlugScheduleEntry>(
+  return showModalBottomSheet<PlugScheduleEntry>(
     context: context,
-    builder: (_) => _PlugScheduleEntryDialog(
-      baseName: baseName,
-      initial: initial,
+    isScrollControlled: true,
+    backgroundColor: GlassTokens.surface,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
     ),
+    builder: (_) => _PlugScheduleSheet(baseName: baseName, initial: initial),
   );
 }
 
@@ -79,47 +84,38 @@ Future<bool> showDeletePlugScheduleDialog(
   return confirmed ?? false;
 }
 
-/// HH : mm : ss picker. [initialSeconds] is seconds since midnight; returns
-/// the picked seconds since midnight, or null if cancelled.
-Future<int?> showPlugTimePicker(
-  BuildContext context, {
-  required String title,
-  required int initialSeconds,
-}) {
-  return showGlassDialog<int>(
-    context: context,
-    builder: (_) => _PlugTimePickerDialog(
-      title: title,
-      initialSeconds: initialSeconds,
-    ),
-  );
-}
-
 // -----------------------------------------------------------------------------
-// Add / edit dialog
+// Add / edit sheet
 // -----------------------------------------------------------------------------
 
 /// Starting values for the cycle fields when the user first turns it on.
 const int _kDefaultCycleSeconds = 5;
 
-class _PlugScheduleEntryDialog extends StatefulWidget {
+class _PlugScheduleSheet extends StatefulWidget {
   final String baseName;
   final PlugScheduleEntry? initial;
 
-  const _PlugScheduleEntryDialog({required this.baseName, this.initial});
+  const _PlugScheduleSheet({required this.baseName, this.initial});
 
   @override
-  State<_PlugScheduleEntryDialog> createState() =>
-      _PlugScheduleEntryDialogState();
+  State<_PlugScheduleSheet> createState() => _PlugScheduleSheetState();
 }
 
-class _PlugScheduleEntryDialogState extends State<_PlugScheduleEntryDialog> {
+class _PlugScheduleSheetState extends State<_PlugScheduleSheet> {
   late String _day;
   late int _start; // seconds since midnight
   late int _end;
   late bool _cycle;
   late final TextEditingController _onCtrl;
   late final TextEditingController _offCtrl;
+
+  /// Which time box the wheels are editing.
+  bool _editingFrom = true;
+
+  /// Remounts the wheels when the target box changes, so they jump to it.
+  int _wheelKey = 0;
+
+  String? _error;
 
   bool get _isEditing => widget.initial != null;
 
@@ -161,15 +157,28 @@ class _PlugScheduleEntryDialogState extends State<_PlugScheduleEntryDialog> {
   int? get _onSeconds => int.tryParse(_onCtrl.text.trim());
   int? get _offSeconds => int.tryParse(_offCtrl.text.trim());
 
-  void _error(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+  /// Day chip labels: "Every day" stays long, weekdays are shortened.
+  static String _short(String day) =>
+      day == kScheduleDayOptions.first ? day : day.substring(0, 3);
+
+  void _setPart({int? h, int? m, int? s}) {
+    final int cur = _editingFrom ? _start : _end;
+    final int next = (h ?? cur ~/ 3600) * 3600 +
+        (m ?? (cur % 3600) ~/ 60) * 60 +
+        (s ?? cur % 60);
+    setState(() {
+      _error = null;
+      if (_editingFrom) {
+        _start = next;
+      } else {
+        _end = next;
+      }
+    });
   }
 
   void _submit() {
     if (_start == _end) {
-      _error('Start and end time cannot be the same');
+      setState(() => _error = 'Start and end time cannot be the same');
       return;
     }
 
@@ -190,11 +199,13 @@ class _PlugScheduleEntryDialogState extends State<_PlugScheduleEntryDialog> {
     final on = _onSeconds;
     final off = _offSeconds;
     if (on == null || on <= 0 || off == null || off <= 0) {
-      _error('ON and OFF time must both be at least 1 second');
+      setState(
+          () => _error = 'ON and OFF time must both be at least 1 second');
       return;
     }
     if (on + off > _rangeSeconds) {
-      _error('One ON + OFF cycle (${formatPlugSeconds(on + off)}) is longer '
+      setState(() => _error =
+          'One ON + OFF cycle (${formatPlugSeconds(on + off)}) is longer '
           'than the time range (${formatPlugSeconds(_rangeSeconds)})');
       return;
     }
@@ -211,141 +222,266 @@ class _PlugScheduleEntryDialogState extends State<_PlugScheduleEntryDialog> {
     );
   }
 
-  Future<void> _pickTime({required bool isStart}) async {
-    final picked = await showPlugTimePicker(
-      context,
-      title: isStart ? 'From' : 'To',
-      initialSeconds: isStart ? _start : _end,
-    );
-    if (picked == null || !mounted) return;
-    setState(() {
-      if (isStart) {
-        _start = picked;
-      } else {
-        _end = picked;
-      }
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
-    return GlassDialog(
-      title: _isEditing ? 'Edit Schedule' : 'Add Schedule',
-      icon: Icons.schedule,
-      content: SingleChildScrollView(
+    final bool nextDay = _end <= _start && _start != _end;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        18,
+        10,
+        18,
+        18 +
+            MediaQuery.viewInsetsOf(context).bottom +
+            MediaQuery.paddingOf(context).bottom,
+      ),
+      child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: GlassTokens.border,
+                  borderRadius: BorderRadius.circular(9),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              '${_isEditing ? 'Edit time' : 'Add time'} · ${widget.baseName}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontFamily: GlassTokens.displayFont,
+                fontSize: 21,
+                fontWeight: FontWeight.w700,
+                color: GlassTokens.textPrimary,
+              ),
+            ),
             Text(
               '${widget.baseName} turns ON during this time',
               style: const TextStyle(
-                fontSize: 12,
+                fontSize: 12.5,
                 color: GlassTokens.textMuted,
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
 
-            // ─── Day ────────────────────────────────────────────────────
-            DropdownButtonFormField<String>(
-              value: _day,
-              decoration:
-                  glassInputDecoration(labelText: 'Day').copyWith(isDense: true),
-              items: kScheduleDayOptions
-                  .map((d) => DropdownMenuItem(value: d, child: Text(d)))
-                  .toList(),
-              onChanged: (v) {
-                if (v != null) setState(() => _day = v);
-              },
+            // ── Day (one per time, as before) ──
+            const SheetLabel('Day'),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final d in kScheduleDayOptions)
+                  SheetChip(
+                    label: _short(d),
+                    selected: d == _day,
+                    onTap: () => setState(() => _day = d),
+                  ),
+              ],
             ),
+            const SizedBox(height: 14),
 
-            const SizedBox(height: 16),
-
-            // ─── Time range (HH:mm:ss) ──────────────────────────────────
+            // ── Time (with seconds) ──
+            const SheetLabel('Time'),
             Row(
               children: [
                 Expanded(
-                  child: _timeField(
+                  child: SheetTimeBox(
                     label: 'From',
-                    text: _startText,
-                    iconColor: GlassTokens.success,
-                    onTap: () => _pickTime(isStart: true),
+                    value: _startText,
+                    active: _editingFrom,
+                    onTap: () => setState(() {
+                      _editingFrom = true;
+                      _wheelKey++;
+                    }),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 8),
                 Expanded(
-                  child: _timeField(
+                  child: SheetTimeBox(
                     label: 'To',
-                    text: _endText,
-                    iconColor: GlassTokens.danger,
-                    onTap: () => _pickTime(isStart: false),
+                    value: _endText,
+                    active: !_editingFrom,
+                    onTap: () => setState(() {
+                      _editingFrom = false;
+                      _wheelKey++;
+                    }),
                   ),
                 ),
               ],
             ),
+            const SizedBox(height: 8),
+            HmsWheels(
+              key: ValueKey(_wheelKey),
+              seconds: _editingFrom ? _start : _end,
+              onHour: (v) => _setPart(h: v),
+              onMinute: (v) => _setPart(m: v),
+              onSecond: (v) => _setPart(s: v),
+            ),
             const SizedBox(height: 6),
             Text(
               'ON for ${formatPlugSeconds(_rangeSeconds)}'
-              '${_end <= _start && _start != _end ? ' (ends next day)' : ''}',
+              '${nextDay ? ' (ends next day)' : ''}',
               style: const TextStyle(fontSize: 12, color: GlassTokens.textMuted),
             ),
-
-            // ─── Advanced: step cycle ───────────────────────────────────
             const SizedBox(height: 12),
-            const Divider(height: 1),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              dense: true,
-              title: const Text(
-                'Advanced: cycle ON / OFF',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-              ),
-              subtitle: Text(
-                _cycle
-                    ? 'Repeats ON then OFF until the range ends'
-                    : 'Off: stays ON for the whole range',
-                style: const TextStyle(
-                  fontSize: 11,
-                  color: GlassTokens.textMuted,
-                ),
-              ),
-              value: _cycle,
-              activeColor: GlassTokens.primary,
-              onChanged: (v) => setState(() => _cycle = v),
-            ),
-            if (_cycle) ...[
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  Expanded(child: _secondsField('ON (seconds)', _onCtrl)),
-                  const SizedBox(width: 12),
-                  Expanded(child: _secondsField('OFF (seconds)', _offCtrl)),
-                ],
-              ),
-              const SizedBox(height: 6),
+
+            // ── Advanced: ON / OFF cycle ──
+            _cycleFold(),
+
+            if (_error != null) ...[
+              const SizedBox(height: 10),
               Text(
-                _cyclePreview(),
+                _error!,
                 style: const TextStyle(
-                  fontSize: 12,
-                  color: GlassTokens.textMuted,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: GlassTokens.danger,
                 ),
               ),
             ],
+            const SizedBox(height: 16),
+
+            Row(
+              children: [
+                Expanded(
+                  flex: 2,
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Cancel'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 3,
+                  child: GlassButton(
+                    label: _isEditing ? 'Update time' : 'Add time',
+                    height: 48,
+                    onPressed: _submit,
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        GlassButton(
-          label: _isEditing ? 'Update' : 'Add',
-          fullWidth: false,
-          height: 44,
-          onPressed: _submit,
-        ),
-      ],
+    );
+  }
+
+  /// "Advanced · cycle ON / OFF" drop-down, like the valve's Advanced fold.
+  /// Closed = ON for the whole range (the default); open = the ON / OFF
+  /// cycle with its seconds. The header shows which one is in use.
+  Widget _cycleFold() {
+    final String summary = _cycle
+        ? '${_onSeconds ?? 0} s / ${_offSeconds ?? 0} s'
+        : 'Always ON';
+
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: GlassTokens.border),
+        borderRadius: BorderRadius.circular(GlassTokens.radiusSm + 2),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          Semantics(
+            button: true,
+            expanded: _cycle,
+            child: InkWell(
+              onTap: () => setState(() {
+                _cycle = !_cycle;
+                _error = null;
+              }),
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+                child: Row(
+                  children: [
+                    const Icon(Icons.repeat_rounded,
+                        size: 18, color: GlassTokens.textSecondary),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Text(
+                        'Advanced · cycle ON / OFF',
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w800,
+                          color: GlassTokens.textPrimary,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      summary,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w800,
+                        color: _cycle
+                            ? GlassTokens.water
+                            : GlassTokens.textMuted,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    AnimatedRotation(
+                      turns: _cycle ? 0.5 : 0,
+                      duration: const Duration(milliseconds: 200),
+                      child: const Icon(Icons.keyboard_arrow_down_rounded,
+                          color: GlassTokens.textSecondary),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            alignment: Alignment.topCenter,
+            child: !_cycle
+                ? const SizedBox(width: double.infinity)
+                : Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                                child: _secondsField('ON (sec)', _onCtrl)),
+                            const SizedBox(width: 10),
+                            Expanded(
+                                child:
+                                    _secondsField('OFF (sec)', _offCtrl)),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          _cyclePreview(),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: GlassTokens.textMuted,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        const Text(
+                          'Close this to stay ON the whole time',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: GlassTokens.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -359,42 +495,6 @@ class _PlugScheduleEntryDialogState extends State<_PlugScheduleEntryDialog> {
         ' → about $cycles cycle${cycles == 1 ? '' : 's'}';
   }
 
-  // ───────────────────────────────────────────────────────────────────────
-  // Helpers
-  // ───────────────────────────────────────────────────────────────────────
-
-  Widget _timeField({
-    required String label,
-    required String text,
-    required Color iconColor,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      child: InputDecorator(
-        decoration: glassInputDecoration(labelText: label).copyWith(
-          isDense: true,
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Flexible(
-              child: Text(
-                text,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontFeatures: [FontFeature.tabularFigures()],
-                ),
-              ),
-            ),
-            Icon(Icons.access_time, color: iconColor, size: 20),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _secondsField(String label, TextEditingController controller) {
     return TextField(
       controller: controller,
@@ -403,122 +503,7 @@ class _PlugScheduleEntryDialogState extends State<_PlugScheduleEntryDialog> {
       decoration: glassInputDecoration(labelText: label).copyWith(
         isDense: true,
       ),
-      onChanged: (_) => setState(() {}), // refresh the preview line
-    );
-  }
-}
-
-// -----------------------------------------------------------------------------
-// HH : mm : ss picker
-// -----------------------------------------------------------------------------
-
-class _PlugTimePickerDialog extends StatefulWidget {
-  final String title;
-  final int initialSeconds;
-
-  const _PlugTimePickerDialog({
-    required this.title,
-    required this.initialSeconds,
-  });
-
-  @override
-  State<_PlugTimePickerDialog> createState() => _PlugTimePickerDialogState();
-}
-
-class _PlugTimePickerDialogState extends State<_PlugTimePickerDialog> {
-  late int _h;
-  late int _m;
-  late int _s;
-  late final FixedExtentScrollController _hCtrl;
-  late final FixedExtentScrollController _mCtrl;
-  late final FixedExtentScrollController _sCtrl;
-
-  @override
-  void initState() {
-    super.initState();
-    final t = widget.initialSeconds % (24 * 3600);
-    _h = t ~/ 3600;
-    _m = (t % 3600) ~/ 60;
-    _s = t % 60;
-    _hCtrl = FixedExtentScrollController(initialItem: _h);
-    _mCtrl = FixedExtentScrollController(initialItem: _m);
-    _sCtrl = FixedExtentScrollController(initialItem: _s);
-  }
-
-  @override
-  void dispose() {
-    _hCtrl.dispose();
-    _mCtrl.dispose();
-    _sCtrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return GlassDialog(
-      title: widget.title,
-      icon: Icons.access_time,
-      content: SizedBox(
-        height: 180,
-        child: Row(
-          children: [
-            Expanded(child: _wheel(_hCtrl, 24, (v) => _h = v)),
-            _colon(),
-            Expanded(child: _wheel(_mCtrl, 60, (v) => _m = v)),
-            _colon(),
-            Expanded(child: _wheel(_sCtrl, 60, (v) => _s = v)),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        GlassButton(
-          label: 'OK',
-          fullWidth: false,
-          height: 44,
-          onPressed: () => Navigator.pop(context, _h * 3600 + _m * 60 + _s),
-        ),
-      ],
-    );
-  }
-
-  Widget _colon() => const Padding(
-        padding: EdgeInsets.symmetric(horizontal: 4),
-        child: Text(
-          ':',
-          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-        ),
-      );
-
-  Widget _wheel(
-    FixedExtentScrollController controller,
-    int count,
-    ValueChanged<int> onChanged,
-  ) {
-    return CupertinoPicker(
-      scrollController: controller,
-      itemExtent: 40,
-      looping: true,
-      selectionOverlay: CupertinoPickerDefaultSelectionOverlay(
-        background: GlassTokens.primary.withValues(alpha: 0.08),
-      ),
-      onSelectedItemChanged: onChanged,
-      children: List.generate(
-        count,
-        (i) => Center(
-          child: Text(
-            i.toString().padLeft(2, '0'),
-            style: const TextStyle(
-              fontSize: 22,
-              color: GlassTokens.textPrimary,
-              fontFeatures: [FontFeature.tabularFigures()],
-            ),
-          ),
-        ),
-      ),
+      onChanged: (_) => setState(() => _error = null), // refresh the preview
     );
   }
 }

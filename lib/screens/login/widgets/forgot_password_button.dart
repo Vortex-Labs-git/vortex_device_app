@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 // =============================================================================
 // FORGOT PASSWORD BUTTON
 // =============================================================================
-// Text button shown below the Sign In button. Currently just shows a snackbar
+// Quiet link under the password field. Currently just shows a snackbar
 // telling the user to contact admin (no self-service reset flow exists).
 // =============================================================================
 
@@ -20,7 +20,7 @@ class ForgotPasswordButton extends StatelessWidget {
           ),
         );
       },
-      child: const Text('Forgot Password?'),
+      child: const Text('Forgot password?'),
     );
   }
 }

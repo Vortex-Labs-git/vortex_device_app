@@ -5,23 +5,24 @@ import 'package:flutter/material.dart';
 import '../../../models/valve_device.dart';
 import '../../../theme/glass_theme.dart';
 import '../../../widgets/glass/glass.dart';
+import 'tinted_add_button.dart';
 
 // =============================================================================
-// SENSOR CARD
+// SENSOR CARD  (UI v2)
 // =============================================================================
-// "Control by → sensor". Two halves, both fed by the "Sensor" block of the
+// The valve's Sensor rules tab, fed by the "Sensor" block of the
 // device_schedule push:
 //
-//   1. IDENTITY PANEL  which sensor drives this valve, whether its unit is
-//                      online (last_seen, same 30 s window as the valve), and
-//                      its latest reading. Offline blurs the reading — a stale
-//                      number that looks live is worse than no number.
+//   1. SENSOR      which sensor drives this valve (name, type, unit), whether
+//                  its unit is online, the latest reading and Remove. Offline
+//                  blurs the reading — a stale number that looks live is worse
+//                  than no number. No sensor yet → "Choose a sensor".
+//   2. RULES       one card per "reading range → valve angle". The rule that
+//                  matches the current reading is marked "In use now".
 //
-//   2. RULE TABLE      "sensor range → valve angle", laid out exactly like
-//                      ScheduleCard's table so the two read as one system.
-//
-// View only. Dialogs, validation and the save call live in DeviceDetailScreen
-// and arrive as callbacks — same split as ScheduleCard.
+// Saving is separate, as on the schedule tab: the parent floats a Save pill
+// (FloatingSavePill) at the bottom of the screen. View only — dialogs, validation
+// and the save call live in DeviceDetailScreen and arrive as callbacks.
 // =============================================================================
 
 class SensorCard extends StatelessWidget {
@@ -33,10 +34,10 @@ class SensorCard extends StatelessWidget {
 
   final List<SensorRule> rules;
   final bool isSavingRules;
-
   final VoidCallback onAddPressed;
-  /// "+ Add sensor" / the swap button — picks WHICH sensor drives this valve.
-  /// A different operation from adding a rule, hence its own callback.
+
+  /// "Choose a sensor" — picks WHICH sensor drives this valve. A different
+  /// operation from adding a rule, hence its own callback.
   final VoidCallback onAddSensorPressed;
 
   /// Unbind the sensor entirely. Destructive — the screen confirms first.
@@ -45,7 +46,7 @@ class SensorCard extends StatelessWidget {
   /// True while get_user_sensors is in flight.
   final bool isLoadingUnits;
 
-  final ValueChanged<int> onRowTapped;   // tap a row to edit it
+  final ValueChanged<int> onRowTapped; // tap a rule to edit it
   final ValueChanged<int> onRowDeleted;
   final VoidCallback onSavePressed;
 
@@ -64,343 +65,252 @@ class SensorCard extends StatelessWidget {
     required this.onSavePressed,
   });
 
-  // Column widths, shared by the header and every row so they stay aligned.
-  // Mirrors ScheduleCard's _dayFlex / _timeFlex / _angleFlex / _deleteWidth.
-  static const int _rangeFlex = 5;
-  static const int _angleFlex = 3;
-  static const double _deleteWidth = 40;
+  /// Index of the rule the current reading falls in, or null (offline,
+  /// unreadable value, or no match).
+  int? get _activeRule {
+    final SensorReading? sensor = reading;
+    if (sensor == null || !isUnitOnline) return null;
+    final double? v = double.tryParse(sensor.value.trim());
+    if (v == null) return null;
+    for (int i = 0; i < rules.length; i++) {
+      if (v >= rules[i].from && v <= rules[i].to) return i;
+    }
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
     final SensorReading? sensor = reading;
+    if (sensor == null) return _buildNoSensor();
 
-    return GlassCard(
-      padding: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    final int? active = _activeRule;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildSensor(sensor),
+        const SizedBox(height: 16),
+
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
           children: [
-            // =========================================================
-            // SECTION 1: HEADER (title + rule count)
-            // =========================================================
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Sensor Settings',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-                Text(
-                  '${rules.length} ${rules.length == 1 ? 'rule' : 'rules'}',
-                  style: TextStyle(color: GlassTokens.textMuted, fontSize: 12),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 16),
-
-            // =========================================================
-            // SECTION 2: THE SENSOR
-            // =========================================================
-            if (sensor == null) _buildAddSensorBox() else _buildSensor(sensor),
-
-            const SizedBox(height: 18),
-
-            // =========================================================
-            // SECTION 3: TABLE HEADER (Sensor range | Valve angle | _)
-            // =========================================================
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              decoration: BoxDecoration(
-                color: GlassTokens.primary.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.6)),
-              ),
-              child: const Row(
-                children: [
-                  Expanded(
-                    flex: _rangeFlex,
-                    child: Center(
-                      child: Text('Sensor range',
-                          style: TextStyle(fontWeight: FontWeight.bold)),
-                    ),
-                  ),
-                  Expanded(
-                    flex: _angleFlex,
-                    child: Center(
-                      child: Text('Valve angle',
-                          style: TextStyle(fontWeight: FontWeight.bold)),
-                    ),
-                  ),
-                  SizedBox(width: _deleteWidth), // delete button column
-                ],
-              ),
-            ),
-
-            // =========================================================
-            // SECTION 4: RULE ROWS (or empty placeholder)
-            // =========================================================
-            if (rules.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 24),
-                child: Center(
-                  child: Text(
-                    'No sensor rules yet.\nTap + to add one.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: GlassTokens.textMuted),
-                  ),
-                ),
-              )
-            else
-              ...rules.asMap().entries.map(
-                    (e) => _buildRow(index: e.key, rule: e.value),
-                  ),
-
-            const SizedBox(height: 12),
-
-            // =========================================================
-            // SECTION 5: ADD RULE
-            // =========================================================
-            Center(
-              child: TextButton.icon(
-                onPressed: onAddPressed,
-                icon: const Icon(Icons.add_circle_outline),
-                label: const Text('Add Sensor Rule'),
-                style: TextButton.styleFrom(
-                  foregroundColor: GlassTokens.primary,
+            const Expanded(
+              child: Text(
+                'Rules',
+                style: TextStyle(
+                  fontFamily: GlassTokens.displayFont,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  color: GlassTokens.textPrimary,
                 ),
               ),
             ),
-
-            const SizedBox(height: 12),
-
-            // =========================================================
-            // SECTION 6: SAVE
-            // =========================================================
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: isSavingRules ? null : onSavePressed,
-                icon: isSavingRules
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Icon(Icons.save),
-                label: Text(isSavingRules ? 'Saving...' : 'Save Sensor Rules'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: GlassTokens.primary,
-                  foregroundColor: Colors.white,
-                  disabledBackgroundColor:
-                      GlassTokens.primary.withValues(alpha: 0.6),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ───────────────────────────────────────────────────────────────────────
-  // Empty state — no sensor bound to this valve yet
-  // ───────────────────────────────────────────────────────────────────────
-  Widget _buildAddSensorBox() {
-    return InkWell(
-      onTap: isLoadingUnits ? null : onAddSensorPressed,
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 18),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.35),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.65)),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: isLoadingUnits
-              ? [
-                  const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: GlassTokens.primary,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    'Loading sensor units...',
-                    style: TextStyle(color: GlassTokens.textMuted),
-                  ),
-                ]
-              : const [
-                  Icon(Icons.add_circle_outline,
-                      color: GlassTokens.primary, size: 20),
-                  SizedBox(width: 8),
-                  Text(
-                    'Add sensor',
-                    style: TextStyle(
-                      color: GlassTokens.primary,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-        ),
-      ),
-    );
-  }
-
-  // ───────────────────────────────────────────────────────────────────────
-  // Identity panel — unit, state, sensor, type, live reading
-  // ───────────────────────────────────────────────────────────────────────
-  Widget _buildSensor(SensorReading sensor) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        // Violet = sensor mode, the same hue ModeToggleCard gives it.
-        color: GlassTokens.info.withValues(alpha: 0.09),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.75)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // -- Unit id + name + online pill --
-          //    Actions deliberately NOT in this row: badge + id + pill + an
-          //    icon squeezes "SU200001001" down to an ellipsis on a 360dp
-          //    phone. Remove lives on its own row at the bottom instead.
-          Row(
-            children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.75),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(Icons.sensors,
-                    color: GlassTokens.info, size: 20),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      sensor.unitId.isEmpty ? 'Unknown unit' : sensor.unitId,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                        color: GlassTokens.textPrimary,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (sensor.unitName.isNotEmpty)
-                      Text(
-                        sensor.unitName,
-                        style: TextStyle(
-                            fontSize: 12, color: GlassTokens.textMuted),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                  ],
-                ),
-              ),
-              _buildStatePill(),
-            ],
-          ),
-
-          const SizedBox(height: 12),
-
-          // -- Sensor name | type | reading --
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: _field(
-                  'Sensor',
-                  sensor.sensorName.isEmpty
-                      ? sensor.sensorId
-                      : sensor.sensorName,
-                ),
-              ),
-              Expanded(
-                child: _field(
-                  'Type',
-                  sensor.sensorType.isEmpty ? '—' : sensor.sensorType,
-                ),
-              ),
-              _buildReading(sensor),
-            ],
-          ),
-
-          // -- Offline: say WHY the reading is greyed out --
-          if (!isUnitOnline) ...[
-            const SizedBox(height: 8),
             Text(
-              sensor.lastSeen == null
-                  ? 'Unit has not reported yet.'
-                  : 'Last seen ${sensor.lastSeen} — reading is stale.',
-              style: TextStyle(fontSize: 11, color: GlassTokens.textMuted),
-            ),
-          ],
-
-          // -- Remove --
-          //    No "change" affordance on purpose: removing drops back to the
-          //    "+ Add sensor" box, which is the one way in. One path in, one
-          //    path out — and it makes the rule wipe explicit instead of
-          //    hiding it behind a swap.
-          const SizedBox(height: 10),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              onPressed: isSavingRules ? null : onRemoveSensor,
-              icon: const Icon(Icons.delete_outline, size: 18),
-              label: const Text('Remove'),
-              style: TextButton.styleFrom(
-                foregroundColor: GlassTokens.danger,
-                visualDensity: VisualDensity.compact,
+              '${rules.length} ${rules.length == 1 ? 'rule' : 'rules'} · '
+              'reading → valve',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: GlassTokens.textMuted,
               ),
             ),
+          ],
+        ),
+        const SizedBox(height: 10),
+
+        if (rules.isEmpty)
+          GlassCard(
+            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+            child: const Text(
+              'No rules yet. Add one for what the valve should do at each '
+              'reading.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: GlassTokens.textMuted, height: 1.4),
+            ),
+          ),
+
+        for (int i = 0; i < rules.length; i++)
+          _RuleCard(
+            rule: rules[i],
+            inUse: i == active,
+            onTap: () => onRowTapped(i),
+            onDelete: () => onRowDeleted(i),
+          ),
+
+        const SizedBox(height: 2),
+        TintedAddButton(label: 'Add rule', onPressed: onAddPressed),
+      ],
+    );
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // No sensor bound yet
+  // ───────────────────────────────────────────────────────────────────────
+
+  Widget _buildNoSensor() {
+    return GlassCard(
+      padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
+      child: Column(
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: GlassTokens.infoSoft,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: const Icon(Icons.sensors, color: GlassTokens.info, size: 26),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'No sensor linked',
+            style: TextStyle(
+              fontFamily: GlassTokens.displayFont,
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+              color: GlassTokens.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Pick a sensor from one of your sensor units. Then add rules for '
+            'what the valve should do at each reading.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13,
+              height: 1.4,
+              color: GlassTokens.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 14),
+          GlassButton(
+            label: isLoadingUnits ? 'Loading sensor units…' : 'Choose a sensor',
+            icon: Icons.add_rounded,
+            fullWidth: false,
+            height: 48,
+            isLoading: isLoadingUnits,
+            onPressed: isLoadingUnits ? null : onAddSensorPressed,
           ),
         ],
       ),
     );
   }
 
-  Widget _buildStatePill() {
-    final Color tint = isUnitOnline ? GlassTokens.success : GlassTokens.danger;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(8, 3, 10, 3),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.72),
-        borderRadius: BorderRadius.circular(100),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.9)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+  // ───────────────────────────────────────────────────────────────────────
+  // The bound sensor
+  // ───────────────────────────────────────────────────────────────────────
+
+  Widget _buildSensor(SensorReading sensor) {
+    final String name =
+        sensor.sensorName.isEmpty ? sensor.sensorId : sensor.sensorName;
+    final String title =
+        sensor.sensorType.isEmpty ? name : '$name · ${sensor.sensorType}';
+    final String unit = [
+      if (sensor.unitName.isNotEmpty) sensor.unitName,
+      if (sensor.unitId.isNotEmpty) sensor.unitId,
+      if (sensor.sensorId.isNotEmpty) sensor.sensorId,
+    ].join(' · ');
+
+    final String status = isUnitOnline
+        ? 'Reading now'
+        : sensor.lastSeen == null
+            ? 'Unit has not reported yet'
+            : 'Last seen ${sensor.lastSeen} · reading is stale';
+
+    return GlassCard(
+      padding: const EdgeInsets.fromLTRB(14, 14, 10, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(shape: BoxShape.circle, color: tint),
+          // -- Icon · name / type / unit · online tag --
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: GlassTokens.infoSoft,
+                  borderRadius: BorderRadius.circular(GlassTokens.radiusSm),
+                ),
+                child: const Icon(Icons.sensors,
+                    color: GlassTokens.info, size: 22),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w800,
+                        color: GlassTokens.textPrimary,
+                      ),
+                    ),
+                    if (unit.isNotEmpty)
+                      Text(
+                        unit,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          color: GlassTokens.textMuted,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              isUnitOnline
+                  ? StatusTag.online()
+                  : StatusTag.offline(),
+              const SizedBox(width: 4),
+            ],
           ),
-          const SizedBox(width: 6),
-          Text(
-            isUnitOnline ? 'Online' : 'Offline',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: tint,
-            ),
+          const SizedBox(height: 10),
+
+          // -- Reading · status text (takes the rest, wraps) · Remove --
+          //    The text is Expanded and may wrap to a second or third line,
+          //    so the Remove button never gets pushed out of the card.
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              _buildReading(sensor),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  status,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    height: 1.35,
+                    color: GlassTokens.textMuted,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              TextButton(
+                onPressed: isSavingRules ? null : onRemoveSensor,
+                style: TextButton.styleFrom(
+                  foregroundColor: GlassTokens.danger,
+                  minimumSize: const Size(0, 40),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(GlassTokens.radiusSm),
+                    side: BorderSide(
+                      color: GlassTokens.danger.withValues(alpha: 0.30),
+                    ),
+                  ),
+                ),
+                child: const Text('Remove'),
+              ),
+            ],
           ),
         ],
       ),
@@ -413,138 +323,158 @@ class SensorCard extends StatelessWidget {
   /// ImageFiltered, NOT BackdropFilter — this blurs its own child, so it costs
   /// one small filter instead of re-blurring the backdrop every frame.
   Widget _buildReading(SensorReading sensor) {
-    final Widget value = Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          // Trimmed to one decimal — see SensorReading.displayValue. The raw
-          // 33.45692475692 pushed this box wide enough to squeeze the Sensor
-          // and Type columns out of the row entirely.
-          sensor.displayValue,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            fontSize: 24,
-            height: 1.1,
-            fontWeight: FontWeight.bold,
-            color: GlassTokens.info,
-          ),
+    final Widget value = ConstrainedBox(
+      // A ceiling so a surprise long value ellipsizes instead of starving
+      // the status text and the Remove button.
+      constraints: const BoxConstraints(maxWidth: 120),
+      child: Text(
+        sensor.displayValue,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          fontFamily: GlassTokens.displayFont,
+          fontSize: 38,
+          height: 1.0,
+          fontWeight: FontWeight.w800,
+          color: GlassTokens.info,
+          fontFeatures: [FontFeature.tabularFigures()],
         ),
-        Text(
-          'reading',
-          style: TextStyle(fontSize: 11, color: GlassTokens.textMuted),
-        ),
-      ],
+      ),
     );
+    return isUnitOnline
+        ? value
+        : ImageFiltered(
+            imageFilter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+            child: Opacity(opacity: 0.55, child: value),
+          );
+  }
+}
+
+// -----------------------------------------------------------------------------
+// One rule: swatch · range / what the valve does · angle · delete. Tap to edit.
+// -----------------------------------------------------------------------------
+
+class _RuleCard extends StatelessWidget {
+  final SensorRule rule;
+  final bool inUse;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
+
+  const _RuleCard({
+    required this.rule,
+    required this.inUse,
+    required this.onTap,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final int a = rule.angle.clamp(0, 90);
+    final String what = a >= 90
+        ? 'Fully open'
+        : a <= 0
+            ? 'Closed'
+            : '$a° open';
+    // Deeper blue the further the valve opens.
+    final Color swatch =
+        Color.lerp(GlassTokens.sunk, GlassTokens.water, a / 90)!;
 
     return Container(
-      // maxWidth as well as minWidth: this box is the only unbounded child of
-      // its Row, so without a ceiling ANY long value starves the two Expanded
-      // columns beside it and overflows the card. The formatting above should
-      // keep it well under 110, but the cap means a surprise value degrades
-      // to an ellipsis instead of breaking the layout.
-      constraints: const BoxConstraints(minWidth: 78, maxWidth: 110),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.8),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.95)),
+        borderRadius: BorderRadius.circular(GlassTokens.radiusMd),
+        boxShadow: inUse
+            ? [
+                BoxShadow(
+                  color: GlassTokens.info.withValues(alpha: 0.18),
+                  spreadRadius: 3,
+                ),
+              ]
+            : null,
       ),
-      child: isUnitOnline
-          ? value
-          : ImageFiltered(
-              imageFilter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
-              child: Opacity(opacity: 0.55, child: value),
-            ),
-    );
-  }
-
-  Widget _field(String label, String value) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          label,
-          style: TextStyle(fontSize: 11, color: GlassTokens.textMuted),
-        ),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-            color: GlassTokens.textPrimary,
-          ),
-          overflow: TextOverflow.ellipsis,
-        ),
-      ],
-    );
-  }
-
-  // ───────────────────────────────────────────────────────────────────────
-  // One rule row (range | angle | delete). Tapping the body edits it; the
-  // delete icon deletes independently — identical to ScheduleCard._buildRow.
-  // ───────────────────────────────────────────────────────────────────────
-  Widget _buildRow({required int index, required SensorRule rule}) {
-    return InkWell(
-      onTap: () => onRowTapped(index),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(color: Colors.white.withValues(alpha: 0.55)),
+      child: Material(
+        color: GlassTokens.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(GlassTokens.radiusMd),
+          side: BorderSide(
+            color: inUse ? GlassTokens.info : GlassTokens.border,
+            width: inUse ? 1.5 : 1,
           ),
         ),
-        child: Row(
-          children: [
-            Expanded(
-              flex: _rangeFlex,
-              child: Center(
-                child: Text(
-                  rule.rangeLabel,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(GlassTokens.radiusMd),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
+            child: Row(
+              children: [
+                Container(
+                  width: 12,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: swatch,
+                    borderRadius: BorderRadius.circular(5),
+                    border: Border.all(color: GlassTokens.border),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
+                            rule.rangeLabel,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                              color: GlassTokens.textPrimary,
+                              fontFeatures: [FontFeature.tabularFigures()],
+                            ),
+                          ),
+                          if (inUse)
+                            const StatusTag(
+                              label: 'In use now',
+                              color: Colors.white,
+                              background: GlassTokens.info,
+                              foreground: Colors.white,
+                            ),
+                        ],
+                      ),
+                      Text(
+                        what,
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: GlassTokens.textMuted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Text(
+                  '$a°',
                   style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ),
-            Expanded(
-              flex: _angleFlex,
-              child: Center(
-                child: Text(
-                  '${rule.angle}°',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: _angleColor(rule.angle),
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w800,
+                    color: GlassTokens.water,
                   ),
                 ),
-              ),
+                IconButton(
+                  tooltip: 'Delete',
+                  icon: const Icon(Icons.delete_outline,
+                      size: 20, color: GlassTokens.textMuted),
+                  onPressed: onDelete,
+                ),
+              ],
             ),
-            SizedBox(
-              width: _deleteWidth,
-              child: IconButton(
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-                onPressed: () => onRowDeleted(index),
-                icon: const Icon(Icons.delete_outline,
-                    size: 20, color: GlassTokens.danger),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
-  }
-
-  /// Same red / amber / green ramp the schedule table uses, so an angle reads
-  /// the same in both tables.
-  Color _angleColor(int angle) {
-    if (angle <= 0) return GlassTokens.danger;
-    if (angle >= 90) return GlassTokens.success;
-    return GlassTokens.warning;
   }
 }

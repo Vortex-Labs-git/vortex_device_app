@@ -34,6 +34,10 @@ class GlassAppBar extends StatelessWidget implements PreferredSizeWidget {
   /// Mark shown immediately before the title — the brand dot on the main shell.
   final Widget? titleMark;
 
+  /// Solid bar colour instead of the light pane (the main tabs use forest).
+  /// The title turns white and the status-bar icons light.
+  final Color? backgroundColor;
+
   const GlassAppBar({
     super.key,
     required this.title,
@@ -43,6 +47,7 @@ class GlassAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.tint,
     this.subtitle,
     this.titleMark,
+    this.backgroundColor,
   });
 
   @override
@@ -51,32 +56,38 @@ class GlassAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color titleColor = tint == null
-        ? GlassTokens.textPrimary
-        : Color.lerp(tint, Colors.black, 0.35)!;
+    final Color titleColor = backgroundColor != null
+        ? Colors.white
+        : tint == null
+            ? GlassTokens.textPrimary
+            : Color.lerp(tint, Colors.black, 0.35)!;
 
     // Flat theme: the bar is opaque, so there is nothing to blur and no
     // BackdropFilter is created. A single hairline along the bottom edge is
     // what separates it from the content scrolling beneath.
     return ClipRect(
         child: DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: GlassTokens.paneGradient(
-              tint: tint,
-              tintStrength: 0.30,
-            ),
-            border: Border(
-              bottom: BorderSide(
-                color: GlassTokens.paneBorder(tint: tint),
-                width: 1,
-              ),
-            ),
-          ),
+          decoration: backgroundColor != null
+              ? BoxDecoration(color: backgroundColor)
+              : BoxDecoration(
+                  gradient: GlassTokens.paneGradient(
+                    tint: tint,
+                    tintStrength: 0.30,
+                  ),
+                  border: Border(
+                    bottom: BorderSide(
+                      color: GlassTokens.paneBorder(tint: tint),
+                      width: 1,
+                    ),
+                  ),
+                ),
           child: AppBar(
             // Set explicitly: AppBar otherwise infers icon brightness from its
             // own background, and ours is transparent, so it guesses wrong and
             // the clock/battery icons disappear into the light bar.
-            systemOverlayStyle: GlassTokens.systemOverlay,
+            systemOverlayStyle: backgroundColor != null
+                ? GlassTokens.systemOverlayOnForest
+                : GlassTokens.systemOverlay,
             toolbarHeight: preferredSize.height,
             title: Row(
               mainAxisSize: MainAxisSize.min,
@@ -97,9 +108,9 @@ class GlassAppBar extends StatelessWidget implements PreferredSizeWidget {
                         title,
                         style: TextStyle(
                           color: titleColor,
+                          fontFamily: GlassTokens.displayFont,
                           fontWeight: FontWeight.w700,
                           fontSize: 19,
-                          letterSpacing: 0.2,
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -108,7 +119,7 @@ class GlassAppBar extends StatelessWidget implements PreferredSizeWidget {
                           subtitle!,
                           style: TextStyle(
                             color: titleColor.withValues(alpha: 0.62),
-                            fontWeight: FontWeight.w500,
+                            fontWeight: FontWeight.w600,
                             fontSize: 11.5,
                             letterSpacing: 0.1,
                           ),

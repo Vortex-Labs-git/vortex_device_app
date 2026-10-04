@@ -24,7 +24,7 @@ class GlassButton extends StatelessWidget {
   final VoidCallback? onPressed;
   final bool isLoading;
 
-  /// Base color for the gradient. Defaults to the brand indigo→violet sweep.
+  /// Fill color. Defaults to leaf green ([GlassTokens.primary]).
   final Color? color;
 
   final bool fullWidth;
@@ -60,12 +60,11 @@ class GlassButton extends StatelessWidget {
               : [
                   BoxShadow(
                     color: (color ?? GlassTokens.primary)
-                        .withValues(alpha: 0.32),
-                    blurRadius: 18,
-                    offset: const Offset(0, 8),
+                        .withValues(alpha: 0.26),
+                    blurRadius: 16,
+                    offset: const Offset(0, 6),
                   ),
                 ],
-          border: Border.all(color: Colors.white.withValues(alpha: 0.28)),
         ),
         child: Material(
           type: MaterialType.transparency,
@@ -90,9 +89,9 @@ class GlassButton extends StatelessWidget {
                       label,
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.2,
+                        fontSize: 15.5,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.1,
                       ),
                     ),
                   ],
@@ -220,7 +219,7 @@ class GlassGhostButton extends StatelessWidget {
                         style: TextStyle(
                           color: foreground,
                           fontSize: 15,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
                     ],
@@ -237,10 +236,10 @@ class GlassGhostButton extends StatelessWidget {
 // -----------------------------------------------------------------------------
 // GLASS ICON BUTTON
 // -----------------------------------------------------------------------------
-// Small circular glass button for chrome (the profile button in the app bar).
-// A bare IconButton on a translucent bar has almost no visible affordance, so
-// this gives it a pane of its own plus a press-down scale — the touch feedback
-// a ripple alone doesn't provide on a light background.
+// Small rounded-square button for chrome (back, profile, more). A bare
+// IconButton has almost no visible affordance, so this gives it a white tile
+// with a hairline plus a press-down scale — the touch feedback a ripple alone
+// doesn't provide on a light background.
 // -----------------------------------------------------------------------------
 
 class GlassIconButton extends StatefulWidget {
@@ -286,9 +285,9 @@ class _GlassIconButtonState extends State<GlassIconButton> {
         width: widget.size,
         height: widget.size,
         decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: Colors.white.withValues(alpha: _pressed ? 0.75 : 0.55),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.80)),
+          borderRadius: BorderRadius.circular(widget.size * 0.35),
+          color: _pressed ? GlassTokens.leafSoft : GlassTokens.surface,
+          border: Border.all(color: GlassTokens.border),
         ),
         child: Material(
           type: MaterialType.transparency,
@@ -297,7 +296,9 @@ class _GlassIconButtonState extends State<GlassIconButton> {
             onTapDown: (_) => _setPressed(true),
             onTapUp: (_) => _setPressed(false),
             onTapCancel: () => _setPressed(false),
-            customBorder: const CircleBorder(),
+            customBorder: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(widget.size * 0.35),
+            ),
             splashColor: fg.withValues(alpha: 0.14),
             child: Icon(widget.icon, size: widget.size * 0.52, color: fg),
           ),
@@ -337,9 +338,9 @@ class _GlassIconButtonState extends State<GlassIconButton> {
 // -----------------------------------------------------------------------------
 // GLASS FAB
 // -----------------------------------------------------------------------------
-// Circular gradient action button. Not a Material FAB — it needs the same
-// gradient + glass edge as GlassButton, which FloatingActionButton can't do
-// without fighting its own elevation and splash.
+// Rounded-square leaf action button with a soft green glow. Not a Material
+// FAB — it needs the same fill + shadow as GlassButton, which
+// FloatingActionButton can't do without fighting its own elevation and splash.
 // -----------------------------------------------------------------------------
 
 class GlassFab extends StatelessWidget {
@@ -362,14 +363,13 @@ class GlassFab extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        shape: BoxShape.circle,
+        borderRadius: BorderRadius.circular(size * 0.34),
         gradient: GlassTokens.accentGradient,
-        border: Border.all(color: Colors.white.withValues(alpha: 0.35), width: 1.2),
         boxShadow: [
           BoxShadow(
-            color: GlassTokens.primary.withValues(alpha: 0.38),
-            blurRadius: 22,
-            offset: const Offset(0, 10),
+            color: GlassTokens.primary.withValues(alpha: 0.34),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
@@ -377,7 +377,9 @@ class GlassFab extends StatelessWidget {
         type: MaterialType.transparency,
         child: InkWell(
           onTap: onPressed,
-          customBorder: const CircleBorder(),
+          customBorder: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(size * 0.34),
+          ),
           splashColor: Colors.white.withValues(alpha: 0.22),
           child: Icon(icon, color: Colors.white, size: size * 0.44),
         ),

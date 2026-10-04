@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../../widgets/glass/glass.dart';
+import '../../../theme/glass_theme.dart';
+import 'tool_row.dart';
 
 // =============================================================================
 // MOTOR CALIBRATION BUTTON
@@ -8,6 +9,7 @@ import '../../../widgets/glass/glass.dart';
 // Direct-mode-only button shown under the Change WiFi button. Tapping it
 // opens MotorCalibrationScreen — that navigation is handled in the parent
 // screen via [onPressed].
+// UI v2: a row in the direct-mode "Device tools" card (see ToolRow).
 // =============================================================================
 
 class MotorCalibrationButton extends StatelessWidget {
@@ -17,9 +19,12 @@ class MotorCalibrationButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GlassGhostButton(
-      label: 'Motor Calibration',
-      icon: Icons.tune,
+    return ToolRow(
+      icon: Icons.track_changes_rounded,
+      iconColor: GlassTokens.onGold,
+      iconBackground: GlassTokens.goldSoft,
+      title: 'Motor calibration',
+      subtitle: 'Set the fully closed and open points',
       onPressed: onPressed,
     );
   }

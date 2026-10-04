@@ -88,6 +88,7 @@ class GlassDialog extends StatelessWidget {
             // Denser than a card: dialog text must stay readable over whatever
             // happens to be behind it.
             opacity: 1.35,
+            borderRadius: BorderRadius.circular(24),
             padding: const EdgeInsets.all(22),
             child: Material(
               type: MaterialType.transparency,
@@ -105,9 +106,6 @@ class GlassDialog extends StatelessWidget {
                             color: accent.withValues(alpha: 0.14),
                             borderRadius:
                                 BorderRadius.circular(GlassTokens.radiusSm),
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.6),
-                            ),
                           ),
                           child: Icon(icon, color: accent, size: 20),
                         ),
@@ -117,7 +115,8 @@ class GlassDialog extends StatelessWidget {
                         child: Text(
                           title,
                           style: TextStyle(
-                            fontSize: 18,
+                            fontSize: 19,
+                            fontFamily: GlassTokens.displayFont,
                             fontWeight: FontWeight.w700,
                             color: tint == null
                                 ? GlassTokens.textPrimary

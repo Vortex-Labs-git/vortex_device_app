@@ -6,23 +6,29 @@ import '../../../widgets/glass/glass.dart';
 // =============================================================================
 // MAIN BOTTOM NAV
 // =============================================================================
-// Bottom navigation bar with 4 fixed tabs: Home / User / Manual / About.
-// Receives the currently selected index and an onTap callback that the
-// parent uses to update its own _currentIndex state.
+// Floating bottom bar with 4 fixed tabs: Home / Account / Guide / About.
 //
-// Translucent (GlassBottomNav): list content slides under it. The selected
-// tab gets a tinted capsule behind its icon, which stays readable when the
-// thing scrolling underneath is busy.
+// ADD BUTTON DISABLED FOR NOW: the raised "+" add-device button is hidden
+// until adding devices from the app is ready. To bring it back, restore the
+// `centerAction:` line in build() — [onAddPressed] and the sheet in
+// MainScreen are kept for that.
+//
+// Receives the currently selected index and an onTap callback that the
+// parent uses to update its own _currentIndex state; [onAddPressed] opens the
+// parent's add-device sheet. Tab order and indices are unchanged
+// (0=Home, 1=User, 2=Manual, 3=About) — only the visible labels changed.
 // =============================================================================
 
 class MainBottomNav extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int> onTap;
+  final VoidCallback onAddPressed;
 
   const MainBottomNav({
     super.key,
     required this.currentIndex,
     required this.onTap,
+    required this.onAddPressed,
   });
 
   @override
@@ -30,6 +36,8 @@ class MainBottomNav extends StatelessWidget {
     return GlassBottomNav(
       currentIndex: currentIndex,
       onTap: onTap,
+      // Add button hidden for now — re-enable with:
+      // centerAction: AddDeviceFab(onPressed: onAddPressed),
       items: const [
         GlassNavItem(
           icon: Icons.home_outlined,
@@ -39,12 +47,12 @@ class MainBottomNav extends StatelessWidget {
         GlassNavItem(
           icon: Icons.person_outline,
           activeIcon: Icons.person_rounded,
-          label: AppStrings.user,
+          label: 'Account',
         ),
         GlassNavItem(
           icon: Icons.menu_book_outlined,
           activeIcon: Icons.menu_book_rounded,
-          label: 'Manual',
+          label: 'Guide',
         ),
         GlassNavItem(
           icon: Icons.info_outline,

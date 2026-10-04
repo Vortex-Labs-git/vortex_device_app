@@ -9,7 +9,8 @@ import '../../../widgets/glass/glass.dart';
 // Shown when there's an error message AND no cached devices to display.
 // Shows the error icon, message, and a Retry button that re-runs initialization.
 //
-// The pane is tinted red so the failure reads before the text does.
+// A white card with a red icon tile: the failure reads at a glance, and the
+// message stays in dark, easy-to-read text.
 // =============================================================================
 
 class ErrorView extends StatelessWidget {
@@ -26,29 +27,23 @@ class ErrorView extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(28),
+        padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
         child: GlassCard(
-          tint: GlassTokens.danger,
-          tintStrength: 0.16,
-          padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 32),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               // Error icon
               Container(
-                width: 82,
-                height: 82,
+                width: 72,
+                height: 72,
                 decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: GlassTokens.danger.withValues(alpha: 0.12),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.7),
-                    width: 1.5,
-                  ),
+                  borderRadius: BorderRadius.circular(24),
+                  color: GlassTokens.dangerSoft,
                 ),
                 child: const Icon(
                   Icons.wifi_off,
-                  size: 38,
+                  size: 34,
                   color: GlassTokens.danger,
                 ),
               ),
@@ -58,10 +53,11 @@ class ErrorView extends StatelessWidget {
               // Error message text
               Text(
                 message,
-                style: TextStyle(
-                  color: Color.lerp(GlassTokens.danger, Colors.black, 0.30),
-                  height: 1.4,
-                  fontWeight: FontWeight.w500,
+                style: const TextStyle(
+                  color: GlassTokens.textPrimary,
+                  fontSize: 14.5,
+                  height: 1.45,
+                  fontWeight: FontWeight.w600,
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -73,7 +69,7 @@ class ErrorView extends StatelessWidget {
                 label: 'Retry',
                 icon: Icons.refresh,
                 fullWidth: false,
-                height: 46,
+                height: 48,
                 onPressed: onRetry,
               ),
             ],

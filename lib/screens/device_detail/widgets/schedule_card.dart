@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../models/valve_device.dart';
 import '../../../theme/glass_theme.dart';
 import '../../../widgets/glass/glass.dart';
+import '../utils/schedule_utils.dart';
 import 'tinted_add_button.dart';
 
 // =============================================================================
@@ -76,7 +77,7 @@ class _ScheduleCardState extends State<ScheduleCard> {
     final visible = <(int, ScheduleEntry)>[
       for (int i = 0; i < schedules.length; i++)
         if (_day == null || _onDay(schedules[i], _day!)) (i, schedules[i]),
-    ]..sort((a, b) => a.$2.start.compareTo(b.$2.start));
+    ]..sort((a, b) => parseScheduleSeconds(a.$2.start).compareTo(parseScheduleSeconds(b.$2.start)));
 
     final String title = _day ?? 'All days';
 

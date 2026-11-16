@@ -72,12 +72,8 @@ class _ScheduleEntrySheetState extends State<_ScheduleEntrySheet> {
     super.initState();
     final e = widget.initial;
     _day = e?.day ?? kScheduleDayOptions.first;
-    _from = _secondsOf(e != null
-        ? parseScheduleTime(e.start)
-        : const TimeOfDay(hour: 8, minute: 0));
-    _to = _secondsOf(e != null
-        ? parseScheduleTime(e.end)
-        : const TimeOfDay(hour: 8, minute: 20));
+    _from = e != null ? parseScheduleSeconds(e.start) : 8 * 3600;
+    _to   = e != null ? parseScheduleSeconds(e.end)   : 8 * 3600 + 20 * 60;
     _angle = (e?.angle ?? 90).toDouble();
   }
 
@@ -112,16 +108,18 @@ class _ScheduleEntrySheetState extends State<_ScheduleEntrySheet> {
   }
 
   void _submit() {
-    // Saved as HH:mm — compare what will actually be stored.
-    final start = formatScheduleTime(_timeOf(_from));
-    final end = formatScheduleTime(_timeOf(_to));
-    if (start == end) {
+    if (_from == _to) {
       setState(() => _error = 'Start and end time cannot be the same');
       return;
     }
     Navigator.pop(
       context,
-      ScheduleEntry(day: _day, start: start, end: end, angle: _angle.round()),
+      ScheduleEntry(
+        day: _day,
+        start: formatScheduleSeconds(_from),
+        end: formatScheduleSeconds(_to),
+        angle: _angle.round(),
+      ),
     );
   }
 

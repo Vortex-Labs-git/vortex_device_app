@@ -198,7 +198,7 @@ class AboutScreen extends StatelessWidget {
           children: [
             for (final (icon, value) in const [
               (Icons.mail_outline_rounded, 'info@vortexlabsofficial.com'),
-              (Icons.phone_outlined, '+94 70 554 9401'),
+              (Icons.phone_outlined, '+94 76 945 9490'),
               (Icons.language_rounded, 'www.vortexlabsofficial.com'),
             ])
               SettingsRow(

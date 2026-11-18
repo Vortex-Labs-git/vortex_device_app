@@ -272,7 +272,7 @@ const List<_Topic> _topics = [
     summary: 'Email, phone, website',
     blocks: [
       _Contact(Icons.mail_outline_rounded, 'info@vortexlabsofficial.com'),
-      _Contact(Icons.phone_outlined, '+94 70 554 9401'),
+      _Contact(Icons.phone_outlined, '+94 76 945 9490'),
       _Contact(Icons.language_rounded, 'www.vortexlabsofficial.com'),
       _Tip('Tap a contact to copy it.'),
     ],

@@ -3,15 +3,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../theme/glass_theme.dart';
-import '../../../widgets/glass/glass.dart';
 
 // =============================================================================
 // CONNECTION STATUS BAR
 // =============================================================================
-// Tappable status capsule above the device list. Three possible states:
-//   - GREEN  "Live updates active"            (server WS connected)
-//   - INDIGO "Direct mode — <ssid>"           (phone is on a Vortex_VA AP)
-//   - ORANGE "Offline — showing cached..."    (no server, no AP)
+// Tappable status card above the device list. Three possible states:
+//   - GREEN  "Live updates on"                (server WS connected)
+//   - GOLD   "Direct mode · <ssid>"           (phone is on a Vortex_VA AP)
+//   - AMBER  "Offline · showing saved..."     (no server, no AP)
 //
 // The one-line summary rarely tells the user what a state actually means for
 // them, so tapping expands an explanation of what works in that mode.
@@ -111,95 +110,102 @@ class _ConnectionStatusBarState extends State<ConnectionStatusBar>
 
     if (widget.wsConnected) {
       tint = GlassTokens.success;
-      label = 'Live updates active';
+      label = 'Live updates on';
       icon = Icons.wifi;
       detail = 'Connected to the Vortex cloud.';
     } else if (widget.isEspApMode) {
       tint = GlassTokens.primary;
-      label = 'Direct mode — ${widget.connectedSsid ?? 'Valve WiFi'}';
+      label = 'Direct mode · ${widget.connectedSsid ?? 'Valve WiFi'}';
       icon = Icons.settings_remote;
       detail = 'Talking straight to the valve over its own WiFi. Manual '
           'control works; schedule and sensor features need a cloud '
           'connection.';
     } else {
       tint = GlassTokens.warning;
-      label = 'Offline — showing cached devices';
+      label = 'Offline · showing saved devices';
       icon = Icons.wifi_off;
       detail = 'No connection to the Vortex cloud. This is the device list '
           'saved on your phone — pull down to retry.';
     }
 
-    final Color foreground = Color.lerp(tint, Colors.black, 0.35)!;
+    // Direct mode is the brand gold (a special link, not an error): gold
+    // fill under dark text. Live and offline use their status colour.
+    final bool gold = !widget.wsConnected && widget.isEspApMode;
+    final Color fill = gold ? GlassTokens.goldSoft : Color.lerp(Colors.white, tint, 0.12)!;
+    final Color foreground =
+        gold ? GlassTokens.textPrimary : Color.lerp(tint, Colors.black, 0.20)!;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-      child: GlassSurface(
-        tint: tint,
-        tintStrength: 0.42,
-        // 20 is exactly half the collapsed height, so this reads as a capsule
-        // when closed and a rounded card when open — no radius animation, and
-        // nothing snaps mid-expand.
-        borderRadius: BorderRadius.circular(20),
-        showShadow: false,
-        onTap: () => setState(() => _expanded = !_expanded),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-        child: AnimatedSize(
-          duration: const Duration(milliseconds: 240),
-          curve: Curves.easeOutCubic,
-          alignment: Alignment.topCenter,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // ── Summary row ──
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+      child: Material(
+        color: fill,
+        borderRadius: BorderRadius.circular(GlassTokens.radiusMd),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(GlassTokens.radiusMd),
+          onTap: () => setState(() => _expanded = !_expanded),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: AnimatedSize(
+              duration: const Duration(milliseconds: 240),
+              curve: Curves.easeOutCubic,
+              alignment: Alignment.topCenter,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _StatusDot(tint: tint, icon: icon, pulse: _pulse),
-                  const SizedBox(width: 9),
-                  Flexible(
-                    child: Text(
-                      label,
-                      style: TextStyle(
-                        color: foreground,
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600,
+                  _StatusDot(
+                    tint: gold ? GlassTokens.gold : tint,
+                    iconColor: gold ? GlassTokens.onGold : Colors.white,
+                    icon: icon,
+                    pulse: _pulse,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 5),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            label,
+                            style: TextStyle(
+                              color: foreground,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          // ── Explanation, revealed on tap ──
+                          if (_expanded) ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              detail,
+                              style: TextStyle(
+                                color: foreground.withValues(alpha: 0.9),
+                                fontSize: 12.5,
+                                height: 1.45,
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
-                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   const SizedBox(width: 4),
-                  AnimatedRotation(
-                    turns: _expanded ? 0.5 : 0,
-                    duration: const Duration(milliseconds: 240),
-                    curve: Curves.easeOutCubic,
-                    child: Icon(
-                      Icons.keyboard_arrow_down_rounded,
-                      size: 18,
-                      color: foreground.withValues(alpha: 0.75),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: AnimatedRotation(
+                      turns: _expanded ? 0.25 : 0,
+                      duration: const Duration(milliseconds: 240),
+                      curve: Curves.easeOutCubic,
+                      child: Icon(
+                        Icons.chevron_right_rounded,
+                        size: 20,
+                        color: foreground.withValues(alpha: 0.75),
+                      ),
                     ),
                   ),
                 ],
               ),
-
-              // ── Explanation, revealed on tap ──
-              if (_expanded) ...[
-                const SizedBox(height: 8),
-                Divider(
-                  height: 1,
-                  color: Colors.white.withValues(alpha: 0.55),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  detail,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: foreground.withValues(alpha: 0.92),
-                    fontSize: 12,
-                    height: 1.45,
-                  ),
-                ),
-              ],
-            ],
+            ),
           ),
         ),
       ),
@@ -217,25 +223,26 @@ class _ConnectionStatusBarState extends State<ConnectionStatusBar>
 
 class _StatusDot extends StatelessWidget {
   final Color tint;
+  final Color iconColor;
   final IconData icon;
   final Animation<double> pulse;
 
   const _StatusDot({
     required this.tint,
+    required this.iconColor,
     required this.icon,
     required this.pulse,
   });
 
   @override
   Widget build(BuildContext context) {
-    final Color foreground = Color.lerp(tint, Colors.black, 0.35)!;
-
     return RepaintBoundary(
       child: SizedBox(
-        width: 22,
-        height: 22,
+        width: 30,
+        height: 30,
         child: Stack(
           alignment: Alignment.center,
+          clipBehavior: Clip.none,
           children: [
             AnimatedBuilder(
               animation: pulse,
@@ -243,8 +250,8 @@ class _StatusDot extends StatelessWidget {
                 final double t = pulse.value;
                 if (t == 0) return const SizedBox.shrink();
                 return Container(
-                  width: 14 + 8 * t,
-                  height: 14 + 8 * t,
+                  width: 28 + 12 * t,
+                  height: 28 + 12 * t,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: tint.withValues(alpha: 0.35 * (1 - t)),
@@ -253,13 +260,10 @@ class _StatusDot extends StatelessWidget {
               },
             ),
             Container(
-              width: 21,
-              height: 21,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: tint.withValues(alpha: 0.20),
-              ),
-              child: Icon(icon, color: foreground, size: 12),
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(shape: BoxShape.circle, color: tint),
+              child: Icon(icon, color: iconColor, size: 15),
             ),
           ],
         ),

@@ -80,3 +80,18 @@ List<ScheduleEntry>? parseSchedulePayload(Map<String, dynamic> data) {
     return null;
   }
 }
+
+/// Seconds since midnight → `HH:mm:ss` — the format the valve stores.
+String formatScheduleSeconds(int seconds) {
+  String two(int n) => n.toString().padLeft(2, '0');
+  return '${two(seconds ~/ 3600)}:${two((seconds % 3600) ~/ 60)}:'
+      '${two(seconds % 60)}';
+}
+
+/// Parses `HH:mm:ss` (or legacy `HH:mm`, seconds = 0) into seconds since
+/// midnight. Unparseable parts fall back to 0.
+int parseScheduleSeconds(String timeStr) {
+  final parts = timeStr.split(':');
+  int part(int i) => i < parts.length ? int.tryParse(parts[i].trim()) ?? 0 : 0;
+  return part(0) * 3600 + part(1) * 60 + part(2);
+}

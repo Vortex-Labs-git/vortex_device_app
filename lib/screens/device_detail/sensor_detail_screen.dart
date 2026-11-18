@@ -1,12 +1,20 @@
-import 'package:flutter/material.dart';
-import 'package:flutter/widget_previews.dart';
 import 'dart:async';
+import 'dart:ui' show ImageFilter;
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter/widget_previews.dart';
 import '../../services/websocket_service.dart';
 import '../../services/esp_direct_service.dart';
 import '../../models/sensor_unit.dart';
 import '../../theme/glass_theme.dart';
 import '../../widgets/glass/glass.dart';
 import '../sensor_config_screen.dart';
+import 'dialogs/wifi_credentials_dialog.dart';
+import 'widgets/change_wifi_button.dart';
+import 'widgets/sensor_type_style.dart';
+import 'widgets/tool_row.dart';
+import 'widgets/valve_header.dart';
 import '../../utils/app_log.dart';
 
 // =============================================================================
@@ -35,10 +43,10 @@ import '../../utils/app_log.dart';
 // dummy data. Defaults to false — production behavior is unchanged.
 //
 // On dispose, server mode resubscribes to 'device_list' so the home list
-// resumes; direct mode must NOT touch the cloud WebSocket. Bottom buttons
-// ("Change WiFi connection" → set_device_wifi popup; "Sensor configuration"
-// → SensorConfigScreen) render in DIRECT MODE ONLY — both are AP-mode
-// operations, so server (online) mode shows no bottom buttons at all.
+// resumes; direct mode must NOT touch the cloud WebSocket. The Device tools
+// card ("Change Wi-Fi" → set_device_wifi sheet; "Sensor configuration"
+// → SensorConfigScreen) renders in DIRECT MODE ONLY — both are AP-mode
+// operations, so server (online) mode shows no tools at all.
 // Unit name Edit remains a stub until the sensor edit REST is defined.
 // Sensor tag names are read-only.
 // =============================================================================
@@ -190,153 +198,322 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
   }
 
   // ---------------------------------------------------------------------------
-  // Build
+  // Build  (UI v2)
   // ---------------------------------------------------------------------------
+  // Forest header (same band as the valve) → sensor tiles, two per row →
+  // direct-mode Device tools. Offline, a red note says when the unit was last
+  // heard from and the values blur, so an old reading never looks live.
   @override
   Widget build(BuildContext context) {
     final unit = _unit;
+    final bool online = unit != null && _isDeviceOnline(unit.lastSeen);
+    final String fallbackName =
+        widget.deviceData['name']?.toString() ?? 'Sensor Unit';
+    final String displayName =
+        unit != null && unit.name.isNotEmpty ? unit.name : fallbackName;
+    final double topInset = MediaQuery.paddingOf(context).top;
 
     return GlassScaffold(
-      appBar: GlassAppBar(
-        title: _isDirectMode ? 'Direct Control' : 'Vortex Labs',
-        tint: _isDirectMode ? GlassTokens.success : null,
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: Icon(
-              _wsConnected
-                  ? (_isDirectMode ? Icons.settings_remote : Icons.wifi)
-                  : Icons.wifi_off,
-              color: _wsConnected ? GlassTokens.success : GlassTokens.danger,
+      // The forest header draws behind the status bar itself.
+      useSafeArea: false,
+      body: Stack(
+        children: [
+          ListView(
+            padding: EdgeInsets.only(
+              bottom: 16 + MediaQuery.paddingOf(context).bottom,
+            ),
+            children: [
+              ValveHeader(
+                deviceName: displayName,
+                deviceId: _deviceId,
+                productType: _headerDetails(unit),
+                isOnline: online,
+                isDirectMode: _isDirectMode,
+                linkConnected: _wsConnected,
+                onEditName: _onEditName,
+                productLine: 'Sensor unit',
+                imageAsset: 'assets/images/SU_1.jpeg',
+                fallbackIcon: Icons.sensors_rounded,
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (unit == null)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 48),
+                        child: Center(child: CircularProgressIndicator()),
+                      )
+                    else ...[
+                      if (!online) ...[
+                        _offlineNote(unit),
+                        const SizedBox(height: 14),
+                      ],
+                      _sensorsTitle(online),
+                      const SizedBox(height: 10),
+                      if (unit.sensors.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 24),
+                          child: Center(
+                            child: Text('No sensors reported',
+                                style:
+                                    TextStyle(color: GlassTokens.textMuted)),
+                          ),
+                        )
+                      else
+                        _sensorGrid(unit.sensors, online),
+                    ],
+
+                    // Direct-mode device tools. Both are AP-mode operations,
+                    // so in server (online) mode this card does not exist.
+                    if (_isDirectMode) ...[
+                      const SizedBox(height: 14),
+                      _deviceTools(),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          // Forest strip behind the status bar, so the clock and battery stay
+          // on green (with light icons) after the header scrolls away.
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: topInset,
+            child: const AnnotatedRegion<SystemUiOverlayStyle>(
+              value: GlassTokens.systemOverlayOnForest,
+              child: ColoredBox(color: GlassTokens.forest),
             ),
           ),
         ],
       ),
-      body: unit == null
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: EdgeInsets.fromLTRB(
-                16,
-                16,
-                16,
-                16 + MediaQuery.paddingOf(context).bottom,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _buildUnitInfoCard(unit),
-                  const SizedBox(height: 16),
-                  ...unit.sensors.map(_buildSensorCard),
-                  if (unit.sensors.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 24),
-                      child: Center(
-                        child: Text('No sensors reported',
-                            style: TextStyle(color: GlassTokens.textMuted)),
-                      ),
-                    ),
-                  const SizedBox(height: 8),
-                  _buildBottomButtons(),
-                ],
-              ),
-            ),
     );
   }
 
-  // ----- Unit info: Product Type / Name (Edit) / Status / Active Sensors -----
-  Widget _buildUnitInfoCard(SensorUnit unit) {
-    final bool online = _isDeviceOnline(unit.lastSeen);
-    final Color statusColor = online ? GlassTokens.success : GlassTokens.danger;
-    final String displayName = unit.name.isNotEmpty
-        ? unit.name
-        : (widget.deviceData['name']?.toString() ?? 'Sensor Unit');
+  /// "1.0.0 · 4 sensors" under the name in the header.
+  String _headerDetails(SensorUnit? unit) {
+    if (unit == null) return 'Sensor unit';
+    final String count =
+        '${unit.sensorCount} sensor${unit.sensorCount == 1 ? '' : 's'}';
+    return unit.version.isNotEmpty ? '${unit.version} · $count' : count;
+  }
 
-    return GlassCard(
-      // Highlighted so the unit summary stands apart from the sensor cards:
-      // indigo-tinted glass, where the per-sensor cards below are neutral.
-      margin: const EdgeInsets.symmetric(horizontal: 4),
-      padding: const EdgeInsets.all(16),
-      tint: GlassTokens.primary,
-      tintStrength: 0.22,
-      child: Column(
+  Widget _offlineNote(SensorUnit unit) {
+    final String lastSeen = unit.lastSeen ?? '';
+    final String detail = _isDirectMode
+        ? 'Direct link lost. Values are the last ones received.'
+        : lastSeen.isEmpty || lastSeen.toUpperCase() == 'NULL'
+            ? 'No recent data. Values are the last ones received.'
+            : 'Last seen $lastSeen. Values are the last ones received.';
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: GlassTokens.dangerSoft,
+        borderRadius: BorderRadius.circular(GlassTokens.radiusSm),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _infoRow('Product Type', Text(
-            unit.version.isNotEmpty ? unit.version : 'Sensor unit',
-            style: const TextStyle(fontWeight: FontWeight.w500),
-          )),
-          const Divider(),
-          _infoRow('Name', Row(children: [
-            TextButton(
-              onPressed: _onEditName,
-              child: const Text('Edit', style: TextStyle(color: GlassTokens.primary)),
+          const Icon(Icons.info_outline_rounded,
+              size: 18, color: GlassTokens.danger),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  const TextSpan(
+                    text: 'Unit offline · ',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  TextSpan(text: detail),
+                ],
+              ),
+              style: const TextStyle(
+                fontSize: 12.5,
+                height: 1.4,
+                color: GlassTokens.danger,
+              ),
             ),
-            Text(displayName, style: const TextStyle(fontWeight: FontWeight.w500)),
-          ])),
-          const Divider(),
-          _infoRow('Connection Status', Row(children: [
-            Container(
-              width: 8, height: 8,
-              decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              online
-                  ? (_isDirectMode ? 'direct' : 'online')
-                  : 'offline',
-              style: TextStyle(color: statusColor, fontWeight: FontWeight.w500),
-            ),
-          ])),
-          const Divider(),
-          _infoRow('Active Sensors', Text(
-            '${unit.sensorCount}',
-            style: const TextStyle(fontWeight: FontWeight.w500),
-          )),
+          ),
         ],
       ),
     );
   }
 
-  // ----- One sensor: Sensor Type(S01) / Tag name / Sensor value -----
-  Widget _buildSensorCard(Sensor sensor) {
-    return GlassCard(
-      padding: EdgeInsets.zero,
-      // Material Card used to supply this gap through its default margin.
-      margin: const EdgeInsets.fromLTRB(4, 0, 4, 12),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            _infoRow('Sensor Type(${_displaySensorId(sensor)})', Text(
-              sensor.type.isNotEmpty ? sensor.type : '—',
-              style: const TextStyle(fontWeight: FontWeight.w500),
-            )),
-            const Divider(),
-            _infoRow('Tag name', Text(
-              sensor.name.isNotEmpty ? sensor.name : '—',
-              style: const TextStyle(fontWeight: FontWeight.w500),
-            )),
-            const Divider(),
-            _infoRow('Sensor value', Text(
-              _formatSensorValue(sensor),
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            )),
-          ],
+  Widget _sensorsTitle(bool online) {
+    return Row(
+      children: [
+        const Expanded(
+          child: Text(
+            'Sensors',
+            style: TextStyle(
+              fontFamily: GlassTokens.displayFont,
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+              color: GlassTokens.textPrimary,
+            ),
+          ),
         ),
+        Text(
+          online ? 'Live' : 'Last values',
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: GlassTokens.textMuted,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Two tiles per row.
+  Widget _sensorGrid(List<Sensor> sensors, bool online) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const double gap = 10;
+        final double w = (constraints.maxWidth - gap) / 2;
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: [
+            for (final s in sensors)
+              SizedBox(width: w, child: _sensorTile(s, online)),
+          ],
+        );
+      },
+    );
+  }
+
+  // ----- One sensor: type icon / tag name / value / type · slot -----
+  Widget _sensorTile(Sensor sensor, bool online) {
+    final style = SensorTypeStyle.of(sensor.type);
+    final String type = sensor.type.isNotEmpty ? sensor.type : 'Sensor';
+
+    Widget value = Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(
+            text: _formatSensorNumber(sensor),
+            style: TextStyle(
+              fontFamily: GlassTokens.displayFont,
+              fontSize: 28,
+              fontWeight: FontWeight.w800,
+              height: 1,
+              color: online ? style.color : GlassTokens.textMuted,
+            ),
+          ),
+          if (_unitSuffix(sensor).isNotEmpty)
+            TextSpan(
+              text: ' ${_unitSuffix(sensor)}',
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: GlassTokens.textMuted,
+              ),
+            ),
+        ],
+      ),
+      maxLines: 1,
+    );
+    value = FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerLeft,
+      child: value,
+    );
+    if (!online) {
+      // ImageFiltered blurs its own child only — cheap, unlike a backdrop.
+      value = Opacity(
+        opacity: 0.6,
+        child: ImageFiltered(
+          imageFilter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+          child: value,
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: GlassTokens.surface,
+        borderRadius: BorderRadius.circular(GlassTokens.radiusMd),
+        border: Border.all(color: GlassTokens.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: style.background,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(style.icon, size: 19, color: style.color),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            sensor.name.isNotEmpty ? sensor.name : '—',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 13.5,
+              fontWeight: FontWeight.w800,
+              color: GlassTokens.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Semantics(
+            label: online ? null : 'Last value, unit offline',
+            child: value,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '$type · ${_displaySensorId(sensor)}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 11.5, color: GlassTokens.textMuted),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _infoRow(String label, Widget trailing) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label,
-            style: const TextStyle(
-              color: Colors.black,
-              fontWeight: FontWeight.bold,
-            )),
-        trailing,
-      ],
+  Widget _deviceTools() {
+    return GlassCard(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'Device tools',
+            style: TextStyle(
+              fontFamily: GlassTokens.displayFont,
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: GlassTokens.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          ChangeWifiButton(
+            onPressed: _onChangeWifi,
+            subtitle: 'Send your farm Wi-Fi to the unit',
+          ),
+          const Divider(height: 1, color: GlassTokens.border),
+          ToolRow(
+            icon: Icons.tune_rounded,
+            iconColor: GlassTokens.info,
+            iconBackground: GlassTokens.infoSoft,
+            title: 'Sensor configuration',
+            subtitle: 'Set the type and name of each sensor',
+            onPressed: _onSensorConfig,
+          ),
+        ],
+      ),
     );
   }
 
@@ -359,65 +536,28 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
   // Numeric readings are shown with exactly 2 decimal places ("24.5" →
   // "24.50", "61" → "61.00"). Non-numeric values pass through unchanged
   // (the format varies per sensor, so don't break anything exotic).
-  // Unit suffix by sensor type: temperature → °C, humidity → %.
-  String _formatSensorValue(Sensor sensor) {
+  String _formatSensorNumber(Sensor sensor) {
     final raw = sensor.value.trim();
     if (raw.isEmpty) return '—';
-
     final parsed = double.tryParse(raw);
-    final text = parsed != null ? parsed.toStringAsFixed(2) : raw;
+    return parsed != null ? parsed.toStringAsFixed(2) : raw;
+  }
 
+  // Unit suffix by sensor type: temperature → °C, humidity → %.
+  String _unitSuffix(Sensor sensor) {
+    if (sensor.value.trim().isEmpty) return '';
     final type = sensor.type.toLowerCase();
-    if (type.contains('temp')) return '$text °C';
-    if (type.contains('humid')) return '$text %';
-    return text;
+    if (type.contains('temp')) return '°C';
+    if (type.contains('humid')) return '%';
+    return '';
   }
-
-  // ----- Bottom buttons: direct mode ONLY. Both are AP-mode operations,
-  //       so in server (online) mode neither button exists. -----
-  Widget _buildBottomButtons() {
-    if (!_isDirectMode) return const SizedBox.shrink();
-
-    return Column(
-      children: [
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            onPressed: _onChangeWifi,
-            icon: const Icon(Icons.wifi),
-            label: const Text('Change WiFi connection'),
-            style: _buttonStyle(),
-          ),
-        ),
-        const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            onPressed: _onSensorConfig,
-            icon: const Icon(Icons.tune),
-            label: const Text('Sensor configuration'),
-            style: _buttonStyle(),
-          ),
-        ),
-      ],
-    );
-  }
-
-  ButtonStyle _buttonStyle() => ElevatedButton.styleFrom(
-        backgroundColor:
-            _isDirectMode ? GlassTokens.success : GlassTokens.primary,
-        foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      );
 
   // ----- Action stubs — unit name editing needs the sensor edit REST
   //       endpoint (server side, not defined yet). Sensor tag names are
   //       read-only in this screen. -----
   void _onEditName() => _todo('Rename sensor unit');
 
-  /// get/set_sensor_config are AP-mode operations. The button that reaches
+  /// get/set_sensor_config are AP-mode operations. The row that reaches
   /// this only renders in direct mode, so no server-mode guard is needed.
   /// Preview mode never navigates — SensorConfigScreen would try to talk
   /// to EspDirectService.
@@ -441,151 +581,12 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
     );
   }
 
-  // -------------------------------------------------------------------------
-  // WiFi Credentials Dialog (Direct mode)
-  // -------------------------------------------------------------------------
-  /// The button that reaches this only renders in direct mode, so no
-  /// server-mode guard is needed. In preview + direct mode the dialog opens
-  /// too (safe: the Save button checks isAuthenticated, which is false in
-  /// preview, so nothing is ever sent).
+  /// Direct mode only (the row lives in Device tools). Same sheet as the
+  /// valve, but it sends the sensor unit's own event, set_device_wifi — NOT
+  /// the valve's set_valve_wifi. In preview mode nothing is ever sent: the
+  /// sheet checks isAuthenticated, which is false there.
   void _onChangeWifi() {
-    _showWifiCredentialsDialog();
-  }
-
-  /// Shows a popup to enter home WiFi SSID and password, then sends
-  /// set_device_wifi (sensor unit event — NOT the valve's set_valve_wifi)
-  /// to the connected ESP32. Architecture Doc v3 - Sensor Unit /
-  /// Details Screen - Data editing.
-  void _showWifiCredentialsDialog() {
-    final ssidController = TextEditingController();
-    final passwordController = TextEditingController();
-    bool obscurePassword = true;
-    bool isSending = false;
-
-    showDialog(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (dialogContext, setDialogState) => AlertDialog(
-          title: const Row(
-            children: [
-              Icon(Icons.wifi, color: GlassTokens.primary),
-              SizedBox(width: 10),
-              Text('Set Home WiFi'),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Enter your home WiFi credentials. The sensor unit will restart and connect to this network.',
-                style: TextStyle(fontSize: 13, color: GlassTokens.textMuted),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: ssidController,
-                autofocus: true,
-                decoration: const InputDecoration(
-                  labelText: 'WiFi Name (SSID)',
-                  hintText: 'Enter your home WiFi name',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.wifi),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: passwordController,
-                obscureText: obscurePassword,
-                decoration: InputDecoration(
-                  labelText: 'WiFi Password',
-                  hintText: 'Enter WiFi password',
-                  border: const OutlineInputBorder(),
-                  prefixIcon: const Icon(Icons.lock),
-                  suffixIcon: IconButton(
-                    icon: Icon(obscurePassword
-                        ? Icons.visibility
-                        : Icons.visibility_off),
-                    onPressed: () {
-                      setDialogState(
-                          () => obscurePassword = !obscurePassword);
-                    },
-                  ),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: isSending ? null : () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton.icon(
-              onPressed: isSending
-                  ? null
-                  : () {
-                      final ssid = ssidController.text.trim();
-                      final password = passwordController.text;
-
-                      if (ssid.isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Please enter WiFi name'),
-                          ),
-                        );
-                        return;
-                      }
-
-                      if (!EspDirectService.instance.isAuthenticated) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                                'Not connected to sensor unit. Go back and reconnect.'),
-                            backgroundColor: GlassTokens.danger,
-                          ),
-                        );
-                        return;
-                      }
-
-                      setDialogState(() => isSending = true);
-
-                      EspDirectService.instance.setSensorUnitWifi(
-                        ssid: ssid,
-                        password: password,
-                      );
-
-                      logD("📤 ESP32: set_device_wifi ssid=$ssid");
-
-                      // ESP32 will restart — connection will be lost
-                      Future.delayed(const Duration(seconds: 3), () {
-                        if (mounted) {
-                          Navigator.pop(dialogContext);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                'WiFi credentials sent! Sensor unit will restart and connect to your home WiFi.',
-                              ),
-                              backgroundColor: GlassTokens.success,
-                              duration: Duration(seconds: 5),
-                            ),
-                          );
-                        }
-                      });
-                    },
-              icon: isSending
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(Icons.save),
-              label: Text(isSending ? 'Sending...' : 'Save'),
-            ),
-          ],
-        ),
-      ),
-    );
+    showWifiCredentialsDialog(context, isSensorUnit: true);
   }
 }
 

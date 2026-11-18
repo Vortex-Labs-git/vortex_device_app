@@ -32,176 +32,161 @@ class _UserScreenState extends State<UserScreen> {
     return _buildProfileView();
   }
 
+  // ---------------------------------------------------------------------------
+  // Profile (UI v2): forest profile card, then grouped settings rows —
+  // account info, Change password, Log out. Same data and actions as before.
+  // ---------------------------------------------------------------------------
   Widget _buildProfileView() {
     final user = AuthService.currentUser!;
+    final String name = (user['name'] ?? '').toString().trim();
+    final String email = (user['email'] ?? '').toString().trim();
+    final String phone = (user['contact'] ?? '').toString().trim();
 
     return SingleChildScrollView(
       padding: EdgeInsets.fromLTRB(
         16,
-        16,
+        12,
         16,
         // Clear the translucent bottom nav this tab scrolls under.
         20 + MediaQuery.paddingOf(context).bottom,
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const SizedBox(height: 12),
-
-          // 1. Profile Avatar (First letter of Name)
-          Container(
-            width: 104,
-            height: 104,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: GlassTokens.accentGradient,
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.5),
-                width: 2,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: GlassTokens.primary.withValues(alpha: 0.35),
-                  blurRadius: 28,
-                  offset: const Offset(0, 12),
-                ),
-              ],
-            ),
-            child: Center(
-              child: Text(
-                // FIX: Use 'name' instead of 'username' or 'full_name'
-                (user['name'] ?? 'U')[0].toUpperCase(),
-                style: const TextStyle(
-                  fontSize: 42,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 16),
-
-          // 2. User Name Display
-          Text(
-            // FIX: Use 'name'
-            user['name'] ?? 'User',
-            style: const TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: GlassTokens.textPrimary,
-            ),
-          ),
-
-          // 3. Email Display
-          Text(
-            // FIX: Use 'email' (This matches login.php line 92)
-            user['email'] ?? '',
-            style: const TextStyle(
-              fontSize: 14,
-              color: GlassTokens.textSecondary,
-            ),
-          ),
-
-          const SizedBox(height: 24),
-
-          // 4. Account Info Card
-          GlassCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          // 1. Profile card
+          ForestHeader(
+            coverStatusBar: false,
+            radius: GlassTokens.radiusLg,
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
+            child: Row(
               children: [
-                const Text(
-                  'ACCOUNT INFO',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 0.8,
-                    color: GlassTokens.textMuted,
+                Container(
+                  width: 64,
+                  height: 64,
+                  alignment: Alignment.center,
+                  decoration: const BoxDecoration(
+                    color: GlassTokens.gold,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Text(
+                    _initials(name),
+                    style: const TextStyle(
+                      fontFamily: GlassTokens.displayFont,
+                      fontSize: 25,
+                      fontWeight: FontWeight.w800,
+                      color: GlassTokens.onGold,
+                    ),
                   ),
                 ),
-                const SizedBox(height: 12),
-                // FIX ALL KEYS BELOW:
-                _buildInfoRow(Icons.person, 'Username', user['name'] ?? 'N/A'),
-                _glassDivider(),
-                _buildInfoRow(Icons.email, 'Email', user['email'] ?? 'N/A'),
-                _glassDivider(),
-                _buildInfoRow(Icons.phone, 'Phone', user['contact'] ?? 'Not set'),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name.isNotEmpty ? name : 'User',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontFamily: GlassTokens.displayFont,
+                          fontSize: 21,
+                          fontWeight: FontWeight.w700,
+                          height: 1.15,
+                          color: Colors.white,
+                        ),
+                      ),
+                      if (email.isNotEmpty)
+                        Text(
+                          email,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.white.withValues(alpha: 0.8),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
               ],
             ),
-          ),
-
-          const SizedBox(height: 24),
-
-          // 5. Change Password Button
-          GlassGhostButton(
-            label: 'Change Password',
-            icon: Icons.lock_outline,
-            onPressed: _handleChangePassword,
-          ),
-
-          const SizedBox(height: 12),
-
-          // 6. Logout Button
-          GlassButton(
-            label: 'Logout',
-            icon: Icons.logout,
-            color: GlassTokens.danger,
-            onPressed: _handleLogout,
           ),
 
           const SizedBox(height: 20),
+
+          // 2. Account info
+          const SettingsLabel('Account info'),
+          SettingsGroup(
+            children: [
+              SettingsRow(
+                icon: Icons.person_outline_rounded,
+                iconColor: GlassTokens.primary,
+                iconBackground: GlassTokens.leafSoft,
+                title: 'Username',
+                subtitle: name.isNotEmpty ? name : 'N/A',
+              ),
+              SettingsRow(
+                icon: Icons.mail_outline_rounded,
+                iconColor: GlassTokens.water,
+                iconBackground: GlassTokens.waterSoft,
+                title: 'Email',
+                subtitle: email.isNotEmpty ? email : 'N/A',
+              ),
+              SettingsRow(
+                icon: Icons.phone_outlined,
+                iconColor: GlassTokens.sun,
+                iconBackground: GlassTokens.sunSoft,
+                title: 'Phone',
+                subtitle: phone.isNotEmpty ? phone : 'Not set',
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 20),
+
+          // 3. Security
+          const SettingsLabel('Security'),
+          SettingsGroup(
+            children: [
+              SettingsRow(
+                icon: Icons.lock_outline_rounded,
+                iconColor: GlassTokens.textSecondary,
+                iconBackground: GlassTokens.sunk,
+                title: 'Change password',
+                onTap: _handleChangePassword,
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 14),
+
+          // 4. Log out
+          SettingsGroup(
+            children: [
+              SettingsRow(
+                icon: Icons.logout_rounded,
+                iconColor: GlassTokens.danger,
+                iconBackground: GlassTokens.dangerSoft,
+                title: 'Log out',
+                titleColor: GlassTokens.danger,
+                onTap: _handleLogout,
+                showChevron: false,
+              ),
+            ],
+          ),
         ],
       ),
     );
   }
 
-  /// Hairline that reads as a seam in the glass rather than a grey rule.
-  Widget _glassDivider() {
-    return Container(
-      height: 1,
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      color: Colors.white.withValues(alpha: 0.55),
-    );
-  }
-
-  Widget _buildInfoRow(IconData icon, String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: GlassTokens.primary.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(GlassTokens.radiusSm),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.6)),
-            ),
-            child: Icon(icon, color: GlassTokens.primary, size: 18),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: GlassTokens.textMuted,
-                  ),
-                ),
-                Text(
-                  value,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    color: GlassTokens.textPrimary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
+  /// "Nimal Perera" → "NP", "nimal" → "N", "" → "U".
+  static String _initials(String name) {
+    final parts =
+        name.split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+    if (parts.isEmpty) return 'U';
+    final String first = parts.first[0];
+    final String last = parts.length > 1 ? parts.last[0] : '';
+    return (first + last).toUpperCase();
   }
 
   void _handleChangePassword() {

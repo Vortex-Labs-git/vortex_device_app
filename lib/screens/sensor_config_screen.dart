@@ -7,6 +7,7 @@ import '../theme/glass_theme.dart';
 import '../widgets/glass/glass.dart';
 
 import '../services/esp_direct_service.dart';
+import 'device_detail/widgets/sensor_type_style.dart';
 import '../utils/app_log.dart';
 
 /// Sensor Configuration Screen (ESP32 direct mode)
@@ -342,229 +343,371 @@ class _SensorConfigScreenState extends State<SensorConfigScreen> {
   }
 
   // ============================================================
-  // BUILD
+  // BUILD  (UI v2)
   // ============================================================
+  // A short list of all 8 slots. Built-in slots are locked; tapping any
+  // other slot opens an editor sheet for its type and tag name. Save is
+  // pinned to the bottom, apart from the list. The entries, the first-reply
+  // rule and the save payload are unchanged.
 
   @override
   Widget build(BuildContext context) {
     final deviceName = widget.deviceData['name']?.toString() ?? 'Sensor Unit';
+    final bool ready = !_isLoadingInitial && _entries.isNotEmpty;
 
     return GlassScaffold(
-      // Green-tinted chrome: this screen only exists in direct-to-device mode.
-      appBar: const GlassAppBar(
-        title: 'Sensor Configuration',
-        tint: GlassTokens.success,
+      appBar: GlassAppBar(
+        title: 'Sensor configuration',
+        subtitle: '$deviceName · direct link',
       ),
+      bottomNavigationBar: ready ? _buildSaveBar() : null,
       body: SafeArea(
+        bottom: !ready,
         child: _isLoadingInitial
             ? const Center(child: CircularProgressIndicator())
             : _entries.isEmpty
-                ? Center(
+                ? const Center(
                     child: Text(
                       'No sensor configuration received.',
                       style: TextStyle(color: GlassTokens.textMuted),
                     ),
                   )
-                : SingleChildScrollView(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        // Device name header
-                        Text(
-                          deviceName,
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleMedium
-                              ?.copyWith(color: GlassTokens.textSecondary),
+                : ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                    children: [
+                      const Text(
+                        'Sensor 01 and 02 are built in. Tap any other slot '
+                        'to set its type and tag name.',
+                        style: TextStyle(
+                          fontSize: 13,
+                          height: 1.4,
+                          color: GlassTokens.textSecondary,
                         ),
-                        const SizedBox(height: 16),
+                      ),
+                      const SizedBox(height: 12),
 
-                        // ── One card per slot (always all 8) ────────
-                        for (var i = 0; i < _entries.length; i++) ...[
-                          _buildSensorCard(i, _entries[i]),
-                          const SizedBox(height: 12),
-                        ],
-                        const SizedBox(height: 4),
-
-                        // ── Save button ─────────────────────────────
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton.icon(
-                            onPressed: _isSaving ? null : _onSavePressed,
-                            icon: _isSaving
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white,
-                                    ),
-                                  )
-                                : const Icon(Icons.save),
-                            label: Text(_isSaving ? 'Saving...' : 'save'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: GlassTokens.success,
-                              foregroundColor: Colors.white,
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 14),
-                              textStyle: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
+                      // ── One row per slot (always all 8) ────────
+                      GlassCard(
+                        padding: EdgeInsets.zero,
+                        child: Column(
+                          children: [
+                            for (var i = 0; i < _entries.length; i++) ...[
+                              if (i > 0)
+                                const Divider(
+                                    height: 1, color: GlassTokens.border),
+                              _buildSlotRow(i, _entries[i]),
+                            ],
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
       ),
     );
   }
 
-  // ── One sensor card: header / type dropdown / name field ─────────
+  // ── One slot row: icon / "Sensor 03 · Moisture" / tag name ───────
   // Header "Sensor 01".."Sensor 08" (GUI index = slot index + 1; the
   // wire id stays S00..S07 — intentional off-by-one per the spec figure).
-  Widget _buildSensorCard(int index, _SensorConfigEntry entry) {
-    final String header =
-        'Sensor ${(index + 1).toString().padLeft(2, '0')}';
+  Widget _buildSlotRow(int index, _SensorConfigEntry entry) {
+    final String header = _slotLabel(index);
+    final bool empty = entry.type == _noType;
+    final style = SensorTypeStyle.of(entry.type);
+    final String name = entry.nameCtrl.text.trim();
 
-    return GlassCard(
-      padding: EdgeInsets.zero,
+    final String subtitle = entry.locked
+        ? '${name.isNotEmpty ? name : entry.type} · built in'
+        : empty
+            ? 'Tap to set up'
+            : name.isNotEmpty
+                ? name
+                : 'No tag name yet';
+
+    return InkWell(
+      onTap: entry.locked ? null : () => _editSlot(index, entry),
       child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        child: Row(
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    header,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: empty ? GlassTokens.sunk : style.background,
+                borderRadius: BorderRadius.circular(GlassTokens.radiusSm),
+              ),
+              child: Icon(
+                entry.locked
+                    ? Icons.lock_outline_rounded
+                    : empty
+                        ? Icons.add_rounded
+                        : style.icon,
+                size: 20,
+                color: empty ? GlassTokens.textMuted : style.color,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '$header · ${empty ? 'Empty slot' : entry.type}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: empty
+                          ? GlassTokens.textSecondary
+                          : GlassTokens.textPrimary,
                     ),
                   ),
-                ),
-                if (entry.locked)
-                  Row(
-                    children: [
-                      Icon(Icons.lock, size: 14, color: GlassTokens.textMuted),
-                      const SizedBox(width: 4),
-                      Text(
-                        'In-build',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: GlassTokens.textMuted,
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-                    ],
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: !entry.locked && !empty && name.isEmpty
+                          ? GlassTokens.danger
+                          : GlassTokens.textMuted,
+                    ),
                   ),
-              ],
+                ],
+              ),
             ),
-            const SizedBox(height: 12),
-
-            // ── Sensor type ─────────────────────────────────
-            Row(
-              children: [
-                const SizedBox(
-                  width: 110,
-                  child: Text('Sensor type',
-                      style: TextStyle(color: GlassTokens.textMuted)),
-                ),
-                Expanded(
-                  child: entry.locked
-                      ? _buildReadOnlyBox(entry.type)
-                      : DropdownButtonFormField<String>(
-                          value: entry.type,
-                          isDense: true,
-                          decoration: _fieldDecoration(),
-                          items: _typeOptions
-                              .map((t) => DropdownMenuItem(
-                                    value: t,
-                                    child: Text(t),
-                                  ))
-                              .toList(),
-                          onChanged: (v) {
-                            if (v != null) {
-                              setState(() => entry.type = v);
-                            }
-                          },
-                        ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-
-            // ── Sensor name (tag) ───────────────────────────
-            Row(
-              children: [
-                const SizedBox(
-                  width: 110,
-                  child: Text('Sensor name',
-                      style: TextStyle(color: GlassTokens.textMuted)),
-                ),
-                Expanded(
-                  child: entry.locked
-                      ? _buildReadOnlyBox(entry.nameCtrl.text)
-                      : TextField(
-                          controller: entry.nameCtrl,
-                          enabled: entry.type != _noType,
-                          decoration: _fieldDecoration(
-                            hint: entry.type == _noType
-                                ? 'Select a type first'
-                                : 'Enter tag name',
-                          ),
-                        ),
-                ),
-              ],
-            ),
+            if (!entry.locked)
+              const Icon(Icons.chevron_right_rounded,
+                  color: GlassTokens.textMuted),
           ],
         ),
       ),
     );
   }
 
-  // ── Small UI helpers ────────────────────────────────────────────
+  String _slotLabel(int index) =>
+      'Sensor ${(index + 1).toString().padLeft(2, '0')}';
 
-  Widget _buildReadOnlyBox(String value) {
-    return GlassSurface(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      borderRadius: BorderRadius.circular(GlassTokens.radiusSm),
-      showShadow: false,
-      child: Text(
-        value.isNotEmpty ? value : '—',
-        style: const TextStyle(
-          fontSize: 14,
-          color: GlassTokens.textSecondary,
-          fontWeight: FontWeight.w500,
-        ),
+  /// Opens the editor sheet; Done writes the type and name back to the
+  /// entry, Cancel leaves it as it was.
+  Future<void> _editSlot(int index, _SensorConfigEntry entry) async {
+    final result = await showModalBottomSheet<(String, String)>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: GlassTokens.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (_) => _SlotEditorSheet(
+        title: _slotLabel(index),
+        typeOptions: _typeOptions,
+        noType: _noType,
+        initialType: entry.type,
+        initialName: entry.nameCtrl.text,
+      ),
+    );
+    if (result == null || !mounted) return;
+    setState(() {
+      entry.type = result.$1;
+      entry.nameCtrl.text = result.$2;
+    });
+  }
+
+  // ── Save bar: pinned to the bottom, apart from the list ──────────
+  Widget _buildSaveBar() {
+    return Container(
+      padding: EdgeInsets.fromLTRB(
+        16,
+        10,
+        16,
+        10 + MediaQuery.paddingOf(context).bottom,
+      ),
+      decoration: const BoxDecoration(
+        color: GlassTokens.surface,
+        border: Border(top: BorderSide(color: GlassTokens.border)),
+      ),
+      child: Row(
+        children: [
+          const Expanded(
+            child: Text(
+              'Saving restarts the unit',
+              style: TextStyle(fontSize: 12.5, color: GlassTokens.textMuted),
+            ),
+          ),
+          const SizedBox(width: 10),
+          // GlassButton fills its width; give it two thirds of the bar.
+          Expanded(
+            flex: 2,
+            child: GlassButton(
+              label: _isSaving ? 'Saving…' : 'Save to unit',
+              icon: Icons.save_outlined,
+              height: 48,
+              isLoading: _isSaving,
+              onPressed: _isSaving ? null : _onSavePressed,
+            ),
+          ),
+        ],
       ),
     );
   }
+}
 
-  InputDecoration _fieldDecoration({String? hint}) {
-    return InputDecoration(
-      hintText: hint,
-      isDense: true,
-      filled: true,
-      fillColor: Colors.white.withValues(alpha: 0.55),
-      contentPadding:
-          const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.75)),
+// =============================================================================
+// SLOT EDITOR SHEET
+// =============================================================================
+// Type chips + tag name for one slot. Owns a copy of the values and pops
+// (type, name) on Done; the screen applies them. The name field is disabled
+// while the slot has no type, as before.
+// =============================================================================
+
+class _SlotEditorSheet extends StatefulWidget {
+  final String title;
+  final List<String> typeOptions;
+  final String noType;
+  final String initialType;
+  final String initialName;
+
+  const _SlotEditorSheet({
+    required this.title,
+    required this.typeOptions,
+    required this.noType,
+    required this.initialType,
+    required this.initialName,
+  });
+
+  @override
+  State<_SlotEditorSheet> createState() => _SlotEditorSheetState();
+}
+
+class _SlotEditorSheetState extends State<_SlotEditorSheet> {
+  late String _type = widget.initialType;
+  late final TextEditingController _name =
+      TextEditingController(text: widget.initialName);
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool empty = _type == widget.noType;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        18,
+        10,
+        18,
+        18 +
+            MediaQuery.viewInsetsOf(context).bottom +
+            MediaQuery.paddingOf(context).bottom,
       ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.75)),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-        borderSide: BorderSide(color: GlassTokens.success, width: 2),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: GlassTokens.border,
+                  borderRadius: BorderRadius.circular(9),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              widget.title,
+              style: const TextStyle(
+                fontFamily: GlassTokens.displayFont,
+                fontSize: 21,
+                fontWeight: FontWeight.w700,
+                color: GlassTokens.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Type',
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w800,
+                color: GlassTokens.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final t in widget.typeOptions)
+                  ChoiceChip(
+                    label: Text(t == widget.noType ? 'No type' : t),
+                    selected: t == _type,
+                    showCheckmark: false,
+                    selectedColor: GlassTokens.textPrimary,
+                    backgroundColor: GlassTokens.surface,
+                    side: BorderSide(
+                      color: t == _type
+                          ? GlassTokens.textPrimary
+                          : GlassTokens.border,
+                      width: 1.5,
+                    ),
+                    labelStyle: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: t == _type
+                          ? GlassTokens.surface
+                          : GlassTokens.textSecondary,
+                    ),
+                    onSelected: (_) => setState(() => _type = t),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _name,
+              enabled: !empty,
+              textInputAction: TextInputAction.done,
+              decoration: glassInputDecoration(
+                labelText: 'Tag name',
+                hintText: empty ? 'Select a type first' : 'Enter tag name',
+                prefixIcon: const Icon(Icons.label_outline_rounded),
+              ),
+            ),
+            if (empty) ...[
+              const SizedBox(height: 8),
+              const Text(
+                'An empty slot is left out when you save.',
+                style: TextStyle(fontSize: 12, color: GlassTokens.textMuted),
+              ),
+            ],
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Cancel'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 2,
+                  child: GlassButton(
+                    label: 'Done',
+                    icon: Icons.check_rounded,
+                    height: 48,
+                    onPressed: () =>
+                        Navigator.pop(context, (_type, _name.text)),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

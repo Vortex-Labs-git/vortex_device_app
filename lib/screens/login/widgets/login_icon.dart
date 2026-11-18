@@ -5,34 +5,34 @@ import '../../../theme/glass_theme.dart';
 // =============================================================================
 // LOGIN ICON
 // =============================================================================
-// Gradient disc at the top of the login card. Solid on purpose: it is the one
-// opaque element in an otherwise translucent card, so the eye lands there
-// first.
+// The Vortex Labs logo on a white rounded tile, top-left of the forest header.
+// The logo keeps its own navy — it is the one place the old brand colour
+// stays. Falls back to a leaf icon if the image is missing.
 // =============================================================================
 
 class LoginIcon extends StatelessWidget {
-  const LoginIcon({super.key});
+  final double size;
+
+  const LoginIcon({super.key, this.size = 64});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(22),
+      width: size,
+      height: size,
       decoration: BoxDecoration(
-        gradient: GlassTokens.accentGradient,
-        shape: BoxShape.circle,
-        border: Border.all(color: Colors.white.withValues(alpha: 0.45), width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: GlassTokens.primary.withValues(alpha: 0.35),
-            blurRadius: 26,
-            offset: const Offset(0, 12),
-          ),
-        ],
-      ),
-      child: const Icon(
-        Icons.person,
-        size: 54,
         color: Colors.white,
+        borderRadius: BorderRadius.circular(size * 0.31),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Image.asset(
+        'assets/images/logo.jpeg',
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => Icon(
+          Icons.eco_rounded,
+          size: size * 0.55,
+          color: GlassTokens.forest,
+        ),
       ),
     );
   }

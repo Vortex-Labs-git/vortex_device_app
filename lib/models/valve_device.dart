@@ -114,8 +114,8 @@ class ScheduleEntry {
 
   /// Matches a time-range key and captures both ends. Also the reason `day`
   /// is skipped without special-casing it.
-  static final RegExp _timeRangeKey =
-      RegExp(r'^\s*(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})\s*$');
+  static final RegExp _timeRangeKey = RegExp(
+    r'^\s*(\d{1,2}:\d{2}(?::\d{2})?)\s*-\s*(\d{1,2}:\d{2}(?::\d{2})?)\s*$');
 
   /// Wire → model. One JSON object can legally hold several time-range keys,
   /// so this returns a list rather than a single entry.

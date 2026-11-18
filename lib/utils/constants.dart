@@ -1,25 +1,3 @@
-import 'package:flutter/material.dart';
-
-import '../theme/glass_theme.dart';
-
-/// Superseded by [GlassTokens] (theme/glass_theme.dart), which is the source
-/// of truth for the frosted-glass look. These aliases stay so older code keeps
-/// compiling and keeps matching the new palette — prefer GlassTokens in new
-/// code, and note that surfaces are now translucent panes (see
-/// widgets/glass/), not the flat [background] / [cardBackground] fills below.
-class AppColors {
-  static const Color primary = GlassTokens.primary;
-  static const Color primaryDark = Color(0xFF0B5A54);
-  static const Color primaryLight = Color(0xFFBFE0DC);
-  static const Color accent = GlassTokens.primaryBright;
-  static const Color success = GlassTokens.success;
-  static const Color warning = GlassTokens.warning;
-  static const Color error = GlassTokens.danger;
-  static const Color offline = GlassTokens.textMuted;
-  static const Color background = GlassTokens.bgMid;
-  static const Color cardBackground = Colors.white;
-}
-
 class AppStrings {
   static const String appName = 'Vortex Labs';
   static const String version = '1.2.0';

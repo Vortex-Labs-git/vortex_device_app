@@ -513,8 +513,9 @@ class _MotorCalibrationScreenState extends State<MotorCalibrationScreen> {
           Text(
             value == '—' && hint != null ? hint : value,
             style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
+              fontFamily: value == '—' ? null : GlassTokens.displayFont,
+              fontSize: value == '—' ? 14 : 22,
+              fontWeight: FontWeight.w700,
               color: value == '—'
                   ? GlassTokens.textMuted
                   : GlassTokens.textPrimary,
@@ -531,39 +532,36 @@ class _MotorCalibrationScreenState extends State<MotorCalibrationScreen> {
       keyboardType: TextInputType.number,
       inputFormatters: [FilteringTextInputFormatter.digitsOnly],
       textAlign: TextAlign.center,
-      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-      decoration: InputDecoration(
-        filled: true,
-        fillColor: Colors.white.withValues(alpha: 0.55),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.75)),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.75)),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: GlassTokens.primary, width: 2),
-        ),
+      style: const TextStyle(
+        fontFamily: GlassTokens.displayFont,
+        fontSize: 20,
+        fontWeight: FontWeight.w700,
       ),
+      decoration: glassInputDecoration(),
     );
   }
 
+  // UI v2: theme colours only — same buttons, same layout.
   ButtonStyle _setBtnStyle() => ElevatedButton.styleFrom(
-        backgroundColor: GlassTokens.primaryBright,
-        foregroundColor: Colors.white,
+        backgroundColor: GlassTokens.leafSoft,
+        foregroundColor: GlassTokens.primary,
         padding: const EdgeInsets.symmetric(vertical: 12),
-        textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        textStyle: const TextStyle(
+          fontFamily: GlassTokens.bodyFont,
+          fontSize: 14,
+          fontWeight: FontWeight.w800,
+        ),
       );
 
   ButtonStyle _rotateBtnStyle() => ElevatedButton.styleFrom(
-        backgroundColor: const Color(0xFF7986CB),
-        foregroundColor: Colors.white,
+        backgroundColor: GlassTokens.surface,
+        foregroundColor: GlassTokens.textPrimary,
+        side: const BorderSide(color: GlassTokens.border, width: 1.5),
         padding: const EdgeInsets.symmetric(vertical: 16),
-        textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        textStyle: const TextStyle(
+          fontFamily: GlassTokens.bodyFont,
+          fontSize: 14,
+          fontWeight: FontWeight.w800,
+        ),
       );
 }

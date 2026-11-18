@@ -5,7 +5,7 @@ import '../../../widgets/glass/glass.dart';
 // =============================================================================
 // LOGIN BUTTON
 // =============================================================================
-// Full-width primary "Sign In" button. Shows a spinner when [isLoading] is
+// Full-width primary "Sign in" button. Shows a spinner when [isLoading] is
 // true and is disabled while loading. The actual login work is handled by
 // the parent through [onPressed].
 // =============================================================================
@@ -23,7 +23,7 @@ class LoginButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GlassButton(
-      label: 'Sign In',
+      label: 'Sign in',
       icon: Icons.login_rounded,
       isLoading: isLoading,
       onPressed: isLoading ? null : onPressed,

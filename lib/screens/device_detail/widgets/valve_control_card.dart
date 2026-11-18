@@ -1,33 +1,43 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../../theme/glass_theme.dart';
-
 import '../../../widgets/glass/glass.dart';
-import 'dart:math' as math;
 
 // =============================================================================
-// VALVE CONTROL CARD
+// VALVE CONTROL CARD  (UI v2)
 // =============================================================================
-// Manual-mode valve control. Has two sub-modes selected by [valveControlEnabled]:
-//   ON  → State mode: Open / Close switch with confirmation tracking
-//   OFF → Angle mode: 0–90° slider + dial visualization + Set Angle button
+// Manual control of the valve, laid out as:
 //
-// All state lives in the parent screen. This widget just renders + raises
-// callbacks for every user action.
+//   1. "Valve now"   what the valve reports — OPEN, CLOSED, or the angle —
+//                    or, while a command is out, where it is heading.
+//   2. Action        only the next thing to do: "Close valve" when it is
+//                    open, "Open valve" when it is closed, both (small) when it
+//                    is part-way. Sends the same Open / Closed command.
+//   3. Advanced      the lever seen from above (what the valve reports, and
+//                    a dashed outline of the angle being set), the 0–90°
+//                    slider in 1° steps, and "Set valve to X°". Sends the
+//                    same Set Angle command.
+//
+// Same constructor as before. [valveControlEnabled] still means "state mode";
+// it is now the Advanced fold: folded = state mode (true), open = angle mode
+// (false), and toggling it calls [onValveControlEnabledChanged] exactly like
+// the old switch did.
+//
+// All state lives in the parent screen. This widget renders and raises
+// callbacks only.
 // =============================================================================
 
 class ValveControlCard extends StatelessWidget {
-  // ── Mode toggle ──
   final bool valveControlEnabled; // true = state mode, false = angle mode
   final ValueChanged<bool> onValveControlEnabledChanged;
 
-  // ── State mode ──
   final bool isOpen;
   final int actualPosition;
   final bool isUpdating;
   final ValueChanged<bool> onOpenCloseToggled; // true=open, false=close
 
-  // ── Angle mode ──
   final double sliderAngle;
   final bool isAngleUpdating;
   final ValueChanged<double> onSliderChanged;
@@ -35,7 +45,6 @@ class ValveControlCard extends StatelessWidget {
   final VoidCallback onSliderEditEnd;
   final ValueChanged<int> onSetAnglePressed;
 
-  // ── Confirmation tracking (shared across both sub-modes) ──
   final bool waitingForConfirmation;
   final int? pendingTargetAngle;
   final int confirmationCountdown;
@@ -59,305 +68,166 @@ class ValveControlCard extends StatelessWidget {
     required this.confirmationCountdown,
   });
 
+  /// Readings within this many degrees of an end count as fully closed /
+  /// fully open, so a valve that settles at 88° still reads OPEN.
+  static const int _endTolerance = 3;
+
+  bool get _busy => isUpdating || isAngleUpdating || waitingForConfirmation;
+  bool get _isClosed => actualPosition <= _endTolerance;
+  bool get _isFullyOpen => actualPosition >= 90 - _endTolerance;
+
   @override
   Widget build(BuildContext context) {
     return GlassCard(
-      padding: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // =========================================================
-            // SECTION 1: HEADER + MODE TOGGLE
-            // =========================================================
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Valve control',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-                Transform.scale(
-                  scale: 1.2,
-                  child: Switch(
-                    value: valveControlEnabled,
-                    // Disable mode switch while waiting for confirmation
-                    onChanged: waitingForConfirmation
-                        ? null
-                        : onValveControlEnabledChanged,
-                  ),
-                ),
-              ],
-            ),
-
-            // =========================================================
-            // SECTION 2: MODE INDICATOR LABEL
-            // =========================================================
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Text(
-                valveControlEnabled
-                    ? 'Mode: Open / Close'
-                    : 'Mode: Angle control',
-                style: TextStyle(
-                  color: GlassTokens.textMuted,
-                  fontSize: 12,
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 8),
-
-            // =========================================================
-            // SECTION 3: STATE MODE (toggle ON)
-            // =========================================================
-            if (valveControlEnabled) ...[
-              // 3.1  Current state readout (what the device/DB reports)
-              _buildCurrentStateRow(),
-
-              const SizedBox(height: 12),
-
-              // 3.2  Full-width action button — shows the OPPOSITE of
-              //      the current state (open now → offers "Close Valve")
-              _buildOpenCloseButton(),
-
-              // const SizedBox(height: 12),
-
-              // // 3.3  Actual position display
-              // _buildActualPositionRow(),
-            ],
-
-            // =========================================================
-            // SECTION 4: ANGLE MODE (toggle OFF)
-            // =========================================================
-            if (!valveControlEnabled) ...[
-              const Text('By angle', style: TextStyle(color: GlassTokens.textMuted)),
-              const SizedBox(height: 12),
-
-              // 4.1  (waiting banner removed — the Set Angle button below
-              //       already shows the countdown)
-
-              // 4.2  Angle dial (ring + needle + center dot)
-              Center(
-                child: SizedBox(
-                  width: 140,
-                  height: 140,
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      // Outer ring
-                      Container(
-                        width: 120,
-                        height: 120,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: GlassTokens.primary.withValues(alpha: 0.16),
-                            width: 8,
-                          ),
-                        ),
-                      ),
-                      // Needle (rotated by current slider angle)
-                      Transform.rotate(
-                        angle: (sliderAngle / 90) * (math.pi / 2),
-                        child: Container(
-                          width: 4,
-                          height: 50,
-                          decoration: BoxDecoration(
-                            color: waitingForConfirmation
-                                ? GlassTokens.primary
-                                : GlassTokens.primary,
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ),
-                      ),
-                      // Center dot
-                      Container(
-                        width: 12,
-                        height: 12,
-                        decoration: BoxDecoration(
-                          color: waitingForConfirmation
-                              ? GlassTokens.primary
-                              : GlassTokens.primary,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 8),
-
-              // 4.3  Big angle value text
-              Center(
-                child: Text(
-                  '${sliderAngle.round()}°',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: waitingForConfirmation
-                        ? GlassTokens.primary
-                        : GlassTokens.primary,
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 8),
-
-              // 4.4  Slider 0° ─────●───── 90°
-              Row(
-                children: [
-                  const Text(
-                    '0°',
-                    style: TextStyle(color: GlassTokens.textMuted, fontSize: 12),
-                  ),
-                  Expanded(
-                    child: Slider(
-                      value: sliderAngle,
-                      min: 0,
-                      max: 90,
-                      divisions: 90,
-                      activeColor: waitingForConfirmation
-                          ? GlassTokens.textMuted
-                          : GlassTokens.primary,
-                      inactiveColor: GlassTokens.primary.withValues(alpha: 0.18),
-                      label: '${sliderAngle.round()}°',
-                      onChanged: waitingForConfirmation ? null : onSliderChanged,
-                      onChangeStart: waitingForConfirmation
-                          ? null
-                          : (_) => onSliderEditStart(),
-                      onChangeEnd: waitingForConfirmation
-                          ? null
-                          : (_) => onSliderEditEnd(),
-                    ),
-                  ),
-                  const Text(
-                    '90°',
-                    style: TextStyle(color: GlassTokens.textMuted, fontSize: 12),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 8),
-
-              // 4.5  "Set Angle" button
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: (isAngleUpdating || waitingForConfirmation)
-                      ? null
-                      : () => onSetAnglePressed(sliderAngle.round()),
-                  icon: (isAngleUpdating || waitingForConfirmation)
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Icon(Icons.send),
-                  label: Text(
-                    waitingForConfirmation
-                        ? 'Waiting... ${confirmationCountdown}s'
-                        : isAngleUpdating
-                            ? 'Sending...'
-                            : 'Set Angle to ${sliderAngle.round()}°',
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: GlassTokens.primary,
-                    foregroundColor: Colors.white,
-                    disabledBackgroundColor:
-                        GlassTokens.primary.withValues(alpha: 0.6),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 8),
-
-              // // 4.6  Actual position display
-              // _buildActualPositionRow(),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ───────────────────────────────────────────────────────────────────────
-  // Helper: actual-position info row (used by both state and angle modes)
-  // ───────────────────────────────────────────────────────────────────────
-  Widget _buildActualPositionRow() {
-    return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'Actual position',
-            style: TextStyle(color: GlassTokens.textMuted, fontSize: 12),
-          ),
-          Text(
-            '$actualPosition°',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 14,
-              color: actualPosition >= 45 ? GlassTokens.success : GlassTokens.danger,
-            ),
-          ),
+          _buildStatus(),
+          const SizedBox(height: 14),
+          _buildAction(),
+          const SizedBox(height: 12),
+          _buildAdvanced(),
         ],
       ),
     );
   }
 
+  // ───────────────────────────────────────────────────────────────────────
+  // 1. Valve now
+  // ───────────────────────────────────────────────────────────────────────
 
-  // ───────────────────────────────────────────────────────────────────────
-  // Helper: current-state readout ("By state" + Open/Closed pill)
-  // ───────────────────────────────────────────────────────────────────────
-  Widget _buildCurrentStateRow() {
-    final Color stateColor =
-        isOpen ? GlassTokens.success : GlassTokens.danger;
+  Widget _buildStatus() {
+    final int? target = waitingForConfirmation ? pendingTargetAngle : null;
+
+    final String big;
+    final String line;
+    final Color color;
+    if (target != null) {
+      big = target <= _endTolerance
+          ? 'CLOSING'
+          : target >= 90 - _endTolerance
+              ? 'OPENING'
+              : 'TO $target°';
+      line = 'Sent $target° · valve was at $actualPosition°';
+      color = GlassTokens.textSecondary;
+    } else if (_isClosed) {
+      big = 'CLOSED';
+      line = 'Closed · valve reports $actualPosition°';
+      color = GlassTokens.textSecondary;
+    } else if (_isFullyOpen) {
+      big = 'OPEN';
+      line = 'Fully open · valve reports $actualPosition°';
+      color = GlassTokens.water;
+    } else {
+      big = '$actualPosition°';
+      line = 'Partly open · valve reports $actualPosition°';
+      color = GlassTokens.water;
+    }
 
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        const Text('By state', style: TextStyle(color: GlassTokens.textMuted)),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          decoration: BoxDecoration(
-            color: stateColor.withValues(alpha: 0.10),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: stateColor.withValues(alpha: 0.40)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  color: stateColor,
-                  shape: BoxShape.circle,
+              const Text(
+                'VALVE NOW',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.9,
+                  color: GlassTokens.textMuted,
                 ),
               ),
-              const SizedBox(width: 6),
+              const SizedBox(height: 2),
               Text(
-                isOpen ? 'Open' : 'Closed',
+                big,
                 style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
-                  color: stateColor,
+                  fontFamily: GlassTokens.displayFont,
+                  fontSize: 40,
+                  fontWeight: FontWeight.w800,
+                  height: 1.05,
+                  color: color,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                line,
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  color: GlassTokens.textMuted,
                 ),
               ),
             ],
+          ),
+        ),
+        Icon(
+          Icons.water_drop_outlined,
+          size: 46,
+          color: !_isClosed && target == null
+              ? GlassTokens.water
+              : GlassTokens.border,
+        ),
+      ],
+    );
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // 2. The next action
+  // ───────────────────────────────────────────────────────────────────────
+
+  Widget _buildAction() {
+    if (_busy) {
+      final bool closing = (pendingTargetAngle ?? (isOpen ? 90 : 0)) <
+          _endTolerance + 1;
+      return _ActionButton(
+        label: waitingForConfirmation
+            ? 'Waiting for the valve · ${confirmationCountdown}s'
+            : 'Sending…',
+        icon: null,
+        color: closing ? GlassTokens.danger : GlassTokens.primary,
+        busy: true,
+        onPressed: null,
+      );
+    }
+
+    if (_isClosed) {
+      return _ActionButton(
+        label: 'Open valve',
+        icon: Icons.lock_open_rounded,
+        color: GlassTokens.primary,
+        onPressed: () => onOpenCloseToggled(true),
+      );
+    }
+    if (_isFullyOpen) {
+      return _ActionButton(
+        label: 'Close valve',
+        icon: Icons.lock_rounded,
+        color: GlassTokens.danger,
+        onPressed: () => onOpenCloseToggled(false),
+      );
+    }
+
+    // Part-way: either direction makes sense.
+    return Row(
+      children: [
+        Expanded(
+          child: _SmallChoice(
+            label: 'Close',
+            sub: 'to 0°',
+            color: GlassTokens.danger,
+            onPressed: () => onOpenCloseToggled(false),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _SmallChoice(
+            label: 'Open',
+            sub: 'to 90°',
+            color: GlassTokens.primary,
+            onPressed: () => onOpenCloseToggled(true),
           ),
         ),
       ],
@@ -365,41 +235,190 @@ class ValveControlCard extends StatelessWidget {
   }
 
   // ───────────────────────────────────────────────────────────────────────
-  // Helper: full-width open/close action button.
-  // The label is always the ACTION, not the state:
-  //   valve open   → "Close Valve" (red)
-  //   valve closed → "Open Valve"  (green)
+  // 3. Advanced: turn handle + Set
   // ───────────────────────────────────────────────────────────────────────
-  Widget _buildOpenCloseButton() {
-    final bool busy = isUpdating || waitingForConfirmation;
 
-    // Which action a press performs. While a command is in flight, `isOpen`
-    // already reports the pending target, so we read the in-flight command
-    // off pendingTargetAngle instead — that keeps the label/colour from
-    // flipping mid-wait.
-    final bool actionIsOpen =
-        (waitingForConfirmation && pendingTargetAngle != null)
-            ? pendingTargetAngle! >= 45
-            : !isOpen;
+  Widget _buildAdvanced() {
+    final bool open = !valveControlEnabled;
+    final int angle = sliderAngle.round();
 
-    final Color actionColor = actionIsOpen
-        ? const Color(0xFF2E7D32) // green – will open
-        : const Color(0xFFC62828); // red   – will close
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: GlassTokens.border),
+        borderRadius: BorderRadius.circular(GlassTokens.radiusSm),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Material(
+            color: GlassTokens.surface,
+            child: InkWell(
+              // Locked while waiting, like the old mode switch.
+              onTap: waitingForConfirmation
+                  ? null
+                  : () => onValveControlEnabledChanged(open),
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                child: Row(
+                  children: [
+                    const Icon(Icons.tune_rounded,
+                        size: 18, color: GlassTokens.textSecondary),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Text(
+                        'Advanced · set an angle',
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w800,
+                          color: GlassTokens.textPrimary,
+                        ),
+                      ),
+                    ),
+                    AnimatedRotation(
+                      turns: open ? 0.5 : 0,
+                      duration: const Duration(milliseconds: 200),
+                      child: const Icon(Icons.keyboard_arrow_down_rounded,
+                          color: GlassTokens.textSecondary),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            child: !open
+                ? const SizedBox(width: double.infinity)
+                : Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _LeverPicture(
+                          actual: actualPosition.clamp(0, 90),
+                          target: angle,
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.baseline,
+                          textBaseline: TextBaseline.alphabetic,
+                          children: [
+                            Text(
+                              '$angle°',
+                              style: const TextStyle(
+                                fontFamily: GlassTokens.displayFont,
+                                fontSize: 26,
+                                fontWeight: FontWeight.w800,
+                                color: GlassTokens.water,
+                              ),
+                            ),
+                            const Spacer(),
+                            Text(
+                              angle == 0
+                                  ? 'Closed'
+                                  : angle == 90
+                                      ? 'Fully open'
+                                      : 'Partly open',
+                              style: const TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w700,
+                                color: GlassTokens.textMuted,
+                              ),
+                            ),
+                          ],
+                        ),
+                        // The old method: 0–90° in 1° steps.
+                        Slider(
+                          value: sliderAngle.clamp(0, 90),
+                          min: 0,
+                          max: 90,
+                          divisions: 90,
+                          label: '$angle°',
+                          activeColor: GlassTokens.water,
+                          onChanged: _busy ? null : onSliderChanged,
+                          onChangeStart:
+                              _busy ? null : (_) => onSliderEditStart(),
+                          onChangeEnd: _busy ? null : (_) => onSliderEditEnd(),
+                        ),
+                        const Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text('0° closed',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color: GlassTokens.textMuted)),
+                            Text('90° open',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color: GlassTokens.textMuted)),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        GlassButton(
+                          label: waitingForConfirmation
+                              ? 'Waiting… ${confirmationCountdown}s'
+                              : isAngleUpdating
+                                  ? 'Sending…'
+                                  : 'Set valve to $angle°',
+                          icon: Icons.send_rounded,
+                          isLoading: isAngleUpdating,
+                          onPressed: _busy
+                              ? null
+                              : () => onSetAnglePressed(angle),
+                        ),
+                      ],
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
-    final String label = waitingForConfirmation
-        ? '${actionIsOpen ? "Opening" : "Closing"}... ${confirmationCountdown}s'
-        : isUpdating
-            ? 'Sending...'
-            : actionIsOpen
-                ? 'Open Valve'
-                : 'Close Valve';
+// -----------------------------------------------------------------------------
+// Buttons
+// -----------------------------------------------------------------------------
 
+class _ActionButton extends StatelessWidget {
+  final String label;
+  final IconData? icon;
+  final Color color;
+  final bool busy;
+  final VoidCallback? onPressed;
+
+  const _ActionButton({
+    required this.label,
+    required this.icon,
+    required this.color,
+    this.busy = false,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return SizedBox(
-      width: double.infinity, // edge to edge inside the card padding
-      child: ElevatedButton.icon(
-        onPressed: busy ? null : () => onOpenCloseToggled(!isOpen),
-        icon: busy
-            ? const SizedBox(
+      height: 54,
+      child: ElevatedButton(
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: color,
+          foregroundColor: Colors.white,
+          disabledBackgroundColor: color.withValues(alpha: 0.65),
+          disabledForegroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(GlassTokens.radiusMd),
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (busy)
+              const SizedBox(
                 width: 18,
                 height: 18,
                 child: CircularProgressIndicator(
@@ -407,26 +426,232 @@ class ValveControlCard extends StatelessWidget {
                   color: Colors.white,
                 ),
               )
-            : Icon(
-                actionIsOpen ? Icons.lock_open_rounded : Icons.lock_rounded,
-                size: 20,
+            else if (icon != null)
+              Icon(icon, size: 20),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text(
+                label,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 15.5,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
-        label: Text(
-          label,
-          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-        ),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: actionColor,
-          foregroundColor: Colors.white,
-          disabledBackgroundColor: actionColor.withValues(alpha: 0.6),
-          disabledForegroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-          elevation: 1,
+            ),
+          ],
         ),
       ),
     );
   }
+}
+
+class _SmallChoice extends StatelessWidget {
+  final String label;
+  final String sub;
+  final Color color;
+  final VoidCallback onPressed;
+
+  const _SmallChoice({
+    required this.label,
+    required this.sub,
+    required this.color,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: GlassTokens.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(GlassTokens.radiusMd),
+        side: const BorderSide(color: GlassTokens.border, width: 1.5),
+      ),
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(GlassTokens.radiusMd),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Column(
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  color: color,
+                ),
+              ),
+              Text(
+                sub,
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  color: GlassTokens.textMuted,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Lever picture: the valve seen from above. The lever on the stem lies across
+// the pipe when closed (0°) and along it when open (90°), as on the real valve.
+// Solid = what the valve reports (animates as reports arrive); dashed = the
+// angle being set on the slider, shown only while it differs. Display only —
+// the slider below does the setting.
+// -----------------------------------------------------------------------------
+
+class _LeverPicture extends StatelessWidget {
+  final int actual;
+  final int target;
+
+  const _LeverPicture({required this.actual, required this.target});
+
+  @override
+  Widget build(BuildContext context) {
+    final bool still = MediaQuery.of(context).disableAnimations;
+    return Semantics(
+      label: 'Valve lever at $actual degrees',
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(GlassTokens.radiusMd),
+        child: AspectRatio(
+          aspectRatio: 16 / 9,
+          child: TweenAnimationBuilder<double>(
+            tween: Tween(end: actual.toDouble()),
+            duration: still ? Duration.zero : const Duration(milliseconds: 600),
+            curve: Curves.easeInOutCubic,
+            builder: (_, shown, _) => CustomPaint(
+              painter: _LeverPainter(actual: shown, target: target),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LeverPainter extends CustomPainter {
+  final double actual;
+  final int target;
+
+  _LeverPainter({required this.actual, required this.target});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final double w = size.width;
+    final double h = size.height;
+    final Offset c = Offset(w / 2, h * 0.62);
+    final double u = h / 360; // design units: drawn at 640 x 360
+
+    canvas.drawRect(Offset.zero & size, Paint()..color = GlassTokens.sunk);
+
+    // Pipe, with water that deepens as the valve opens.
+    final Rect pipe = Rect.fromLTRB(0, c.dy - 44 * u, w, c.dy + 44 * u);
+    canvas.drawRect(pipe, Paint()..color = GlassTokens.metal);
+    canvas.drawLine(pipe.topLeft, pipe.topRight,
+        Paint()..color = GlassTokens.metalEdge..strokeWidth = 3 * u);
+    canvas.drawLine(pipe.bottomLeft, pipe.bottomRight,
+        Paint()..color = GlassTokens.metalEdge..strokeWidth = 3 * u);
+    canvas.drawRect(
+      Rect.fromLTRB(0, c.dy - 28 * u, w, c.dy + 28 * u),
+      Paint()
+        ..color = GlassTokens.water
+            .withValues(alpha: 0.25 + 0.55 * (actual / 90).clamp(0, 1)),
+    );
+
+    // Valve body.
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromCenter(center: c, width: 110 * u, height: 110 * u),
+        Radius.circular(18 * u),
+      ),
+      Paint()..color = GlassTokens.metalSoft,
+    );
+
+    // Quarter-turn track and end marks.
+    final Paint dashed = Paint()
+      ..color = GlassTokens.textMuted
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2 * u;
+    const int dashes = 14;
+    for (int i = 0; i < dashes; i += 2) {
+      canvas.drawArc(
+        Rect.fromCircle(center: c, radius: 128 * u),
+        -math.pi / 2 + (math.pi / 2) * i / dashes,
+        (math.pi / 2) / dashes,
+        false,
+        dashed,
+      );
+    }
+    // Beside the two ends of the track, clear of the lever.
+    _label(canvas, 'CLOSED', Offset(c.dx - 14 * u, c.dy - 150 * u), u,
+        alignRight: true);
+    _label(canvas, 'OPEN', Offset(c.dx + 120 * u, c.dy - 78 * u), u);
+
+    // Target (dashed) when it differs, then the reported lever.
+    if ((target - actual).abs() >= 1) _lever(canvas, c, target.toDouble(), u, ghost: true);
+    _lever(canvas, c, actual, u);
+
+    canvas.drawCircle(c, 13 * u, Paint()..color = GlassTokens.surface);
+    canvas.drawCircle(
+      c,
+      13 * u,
+      Paint()
+        ..color = GlassTokens.forest
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 5 * u,
+    );
+  }
+
+  /// 0° points up (across the pipe), 90° points right (along it).
+  void _lever(Canvas canvas, Offset c, double deg, double u,
+      {bool ghost = false}) {
+    canvas.save();
+    canvas.translate(c.dx, c.dy);
+    canvas.rotate((deg - 90) * math.pi / 180);
+    final RRect bar = RRect.fromRectAndRadius(
+      Rect.fromLTWH(-14 * u, -14 * u, 132 * u, 28 * u),
+      Radius.circular(14 * u),
+    );
+    if (ghost) {
+      canvas.drawRRect(
+        bar,
+        Paint()
+          ..color = GlassTokens.textMuted
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 3 * u,
+      );
+    } else {
+      canvas.drawRRect(bar, Paint()..color = GlassTokens.forest);
+      canvas.drawCircle(
+          Offset(104 * u, 0), 12 * u, Paint()..color = GlassTokens.gold);
+    }
+    canvas.restore();
+  }
+
+  void _label(Canvas canvas, String text, Offset at, double u,
+      {bool alignRight = false}) {
+    final tp = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          fontFamily: GlassTokens.bodyFont,
+          fontSize: 18 * u,
+          fontWeight: FontWeight.w800,
+          color: GlassTokens.textSecondary,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    tp.paint(canvas, alignRight ? at - Offset(tp.width, 0) : at);
+  }
+
+  @override
+  bool shouldRepaint(_LeverPainter old) =>
+      old.actual != actual || old.target != target;
 }
